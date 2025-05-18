@@ -327,23 +327,93 @@ fn build_rule_from_ident(
 }
 
 fn create_field_pattern(value: &serde_json::Value) -> Result<crate::ast::FieldPattern, ParseError> {
+    use crate::pattern::{new_string_matcher, new_num_matcher, TextPatternModifier};
+    use std::sync::Arc;
+    
     match value {
         serde_json::Value::String(s) => {
             // Check if it's a glob pattern
-            if s.contains('*') || s.contains('?') {
-                Ok(crate::ast::FieldPattern::Glob(s.clone()))
+            let modifier = if s.contains('*') || s.contains('?') {
+                TextPatternModifier::None  // Will be handled as glob by factory
             } else {
-                Ok(crate::ast::FieldPattern::Exact(s.clone()))
-            }
+                TextPatternModifier::None  // Exact match
+            };
+            
+            let matcher = new_string_matcher(
+                modifier,
+                false,  // lowercase
+                false,  // all
+                false,  // no_collapse_ws
+                vec![s.clone()],
+            ).map_err(|e| ParseError::UnsupportedValueType { 
+                value_type: e 
+            })?;
+            
+            Ok(crate::ast::FieldPattern::String {
+                matcher: Arc::from(matcher),
+                pattern_desc: s.clone(),
+            })
         }
         serde_json::Value::Number(n) => {
-            Ok(crate::ast::FieldPattern::Exact(n.to_string()))
+            if let Some(num) = n.as_i64() {
+                let matcher = new_num_matcher(vec![num])
+                    .map_err(|e| ParseError::UnsupportedValueType { 
+                        value_type: e 
+                    })?;
+                
+                Ok(crate::ast::FieldPattern::Numeric {
+                    matcher: Arc::from(matcher),
+                    pattern_desc: n.to_string(),
+                })
+            } else {
+                // Fall back to string matching for floats
+                let matcher = new_string_matcher(
+                    TextPatternModifier::None,
+                    false,  // lowercase
+                    false,  // all
+                    false,  // no_collapse_ws
+                    vec![n.to_string()],
+                ).map_err(|e| ParseError::UnsupportedValueType { 
+                    value_type: e 
+                })?;
+                
+                Ok(crate::ast::FieldPattern::String {
+                    matcher: Arc::from(matcher),
+                    pattern_desc: n.to_string(),
+                })
+            }
         }
         serde_json::Value::Bool(b) => {
-            Ok(crate::ast::FieldPattern::Exact(b.to_string()))
+            let matcher = new_string_matcher(
+                TextPatternModifier::None,
+                false,  // lowercase
+                false,  // all
+                false,  // no_collapse_ws
+                vec![b.to_string()],
+            ).map_err(|e| ParseError::UnsupportedValueType { 
+                value_type: e 
+            })?;
+            
+            Ok(crate::ast::FieldPattern::String {
+                matcher: Arc::from(matcher),
+                pattern_desc: b.to_string(),
+            })
         }
         serde_json::Value::Null => {
-            Ok(crate::ast::FieldPattern::Exact("null".to_string()))
+            let matcher = new_string_matcher(
+                TextPatternModifier::None,
+                false,  // lowercase
+                false,  // all
+                false,  // no_collapse_ws
+                vec!["null".to_string()],
+            ).map_err(|e| ParseError::UnsupportedValueType { 
+                value_type: e 
+            })?;
+            
+            Ok(crate::ast::FieldPattern::String {
+                matcher: Arc::from(matcher),
+                pattern_desc: "null".to_string(),
+            })
         }
         _ => Err(ParseError::UnsupportedValueType { 
             value_type: format!("{:?}", value) 

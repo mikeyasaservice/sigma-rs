@@ -51,6 +51,7 @@ uuid = { version = "1.6", features = ["v4"] }
 chrono = "0.4"
 walkdir = "2.5"
 globset = "0.4"
+lazy_static = "1.4"
 
 [build-dependencies]
 tonic-build = "0.11"

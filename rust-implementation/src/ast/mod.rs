@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use std::fmt::Debug;
 
 pub mod nodes;
@@ -58,65 +58,144 @@ pub trait Branch: Debug + Send + Sync {
     fn describe(&self) -> String;
 }
 
+use crate::pattern::{StringMatcher, NumMatcher, TextPatternModifier, new_string_matcher, new_num_matcher};
+use std::sync::Arc;
+
 /// Field rule for matching event fields
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FieldRule {
     pub field: String,
     pub pattern: FieldPattern,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+/// Field pattern types for matching
+#[derive(Debug, Clone)]
 pub enum FieldPattern {
-    Exact(String),
-    Glob(String),
-    Regex(String),
+    /// String-based pattern matching
+    String {
+        matcher: Arc<dyn StringMatcher>,
+        pattern_desc: String,
+    },
+    /// Numeric pattern matching
+    Numeric {
+        matcher: Arc<dyn NumMatcher>,
+        pattern_desc: String,
+    },
+    /// Keyword matching against event keywords
     Keywords(Vec<String>),
+}
+
+// Implement Serialize for compatibility
+impl serde::Serialize for FieldPattern {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            FieldPattern::String { pattern_desc, .. } => {
+                serializer.serialize_str(pattern_desc)
+            }
+            FieldPattern::Numeric { pattern_desc, .. } => {
+                serializer.serialize_str(pattern_desc)
+            }
+            FieldPattern::Keywords(keywords) => {
+                keywords.serialize(serializer)
+            }
+        }
+    }
+}
+
+// Implement PartialEq for compatibility
+impl PartialEq for FieldPattern {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (FieldPattern::String { pattern_desc: p1, .. }, FieldPattern::String { pattern_desc: p2, .. }) => p1 == p2,
+            (FieldPattern::Numeric { pattern_desc: p1, .. }, FieldPattern::Numeric { pattern_desc: p2, .. }) => p1 == p2,
+            (FieldPattern::Keywords(k1), FieldPattern::Keywords(k2)) => k1 == k2,
+            _ => false,
+        }
+    }
 }
 
 impl FieldRule {
     pub fn new(field: String, pattern: FieldPattern) -> Self {
         Self { field, pattern }
     }
+    
+    /// Create a string pattern
+    pub fn string_pattern(field: String, pattern: String, modifier: TextPatternModifier) -> Result<Self, String> {
+        let matcher = new_string_matcher(
+            modifier,
+            false,  // lowercase
+            false,  // all
+            false,  // no_collapse_ws
+            vec![pattern.clone()],
+        )?;
+        
+        Ok(Self {
+            field,
+            pattern: FieldPattern::String {
+                matcher: Arc::from(matcher),
+                pattern_desc: pattern,
+            },
+        })
+    }
+    
+    /// Create a glob pattern
+    pub fn glob_pattern(field: String, pattern: String) -> Result<Self, String> {
+        let matcher = new_string_matcher(
+            TextPatternModifier::None,
+            false,  // lowercase
+            false,  // all
+            false,  // no_collapse_ws
+            vec![pattern.clone()],
+        )?;
+        
+        Ok(Self {
+            field,
+            pattern: FieldPattern::String {
+                matcher: Arc::from(matcher),
+                pattern_desc: pattern,
+            },
+        })
+    }
 
     pub async fn matches(&self, event: &dyn Event) -> MatchResult {
-        let value = match event.select(&self.field) {
-            Some(v) => v,
-            None => return MatchResult::not_applicable(),
-        };
-
-        let matched = match &self.pattern {
-            FieldPattern::Exact(s) => {
-                value.as_str().map(|v| v == s).unwrap_or(false)
+        match &self.pattern {
+            FieldPattern::String { matcher, .. } => {
+                let value = match event.select(&self.field) {
+                    Some(v) => v,
+                    None => return MatchResult::not_applicable(),
+                };
+                
+                let value_str = match value.as_str() {
+                    Some(s) => s,
+                    None => return MatchResult::not_matched(),
+                };
+                
+                MatchResult::new(matcher.string_match(value_str), true)
             }
-            FieldPattern::Glob(pattern) => {
-                // TODO: Implement glob matching
-                if let Some(v) = value.as_str() {
-                    glob::Pattern::new(pattern)
-                        .map(|p| p.matches(v))
-                        .unwrap_or(false)
-                } else {
-                    false
-                }
-            }
-            FieldPattern::Regex(pattern) => {
-                // TODO: Implement regex matching
-                if let Some(v) = value.as_str() {
-                    regex::Regex::new(pattern)
-                        .map(|r| r.is_match(v))
-                        .unwrap_or(false)
-                } else {
-                    false
-                }
+            FieldPattern::Numeric { matcher, .. } => {
+                let value = match event.select(&self.field) {
+                    Some(v) => v,
+                    None => return MatchResult::not_applicable(),
+                };
+                
+                let num_value = match value.as_i64() {
+                    Some(n) => n,
+                    None => return MatchResult::not_matched(),
+                };
+                
+                MatchResult::new(matcher.num_match(num_value), true)
             }
             FieldPattern::Keywords(keywords) => {
                 let event_keywords = event.keywords();
-                keywords
+                let matched = keywords
                     .iter()
-                    .all(|k| event_keywords.contains(k))
+                    .all(|k| event_keywords.contains(k));
+                MatchResult::new(matched, true)
             }
-        };
-
-        MatchResult::new(matched, true)
+        }
     }
 }
 

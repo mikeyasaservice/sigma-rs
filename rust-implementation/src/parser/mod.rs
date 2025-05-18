@@ -297,26 +297,81 @@ fn create_rule_from_ident(
     value: &serde_json::Value,
     no_collapse_ws: bool,
 ) -> Result<Arc<dyn Branch>, ParseError> {
+    use crate::pattern::{new_string_matcher, new_num_matcher, TextPatternModifier};
+    
     // Handle different value types
     match value {
         serde_json::Value::String(s) => {
+            let processed = process_string_value(s, no_collapse_ws);
+            let modifier = if processed.contains('*') || processed.contains('?') {
+                TextPatternModifier::None  // Will be handled as glob
+            } else {
+                TextPatternModifier::None  // Exact match
+            };
+            
+            let matcher = new_string_matcher(
+                modifier,
+                false,  // lowercase
+                false,  // all
+                no_collapse_ws,
+                vec![processed.clone()],
+            ).map_err(|e| ParseError::parser_error(&e))?;
+            
             Ok(Arc::new(FieldRule::new(
                 field.to_string(),
-                FieldPattern::Exact(process_string_value(s, no_collapse_ws)),
+                FieldPattern::String {
+                    matcher: Arc::from(matcher),
+                    pattern_desc: processed,
+                },
             )))
         }
         serde_json::Value::Number(n) => {
-            // Convert number to string for field matching
-            Ok(Arc::new(FieldRule::new(
-                field.to_string(),
-                FieldPattern::Exact(n.to_string()),
-            )))
+            if let Some(num) = n.as_i64() {
+                let matcher = new_num_matcher(vec![num])
+                    .map_err(|e| ParseError::parser_error(&e))?;
+                
+                Ok(Arc::new(FieldRule::new(
+                    field.to_string(),
+                    FieldPattern::Numeric {
+                        matcher: Arc::from(matcher),
+                        pattern_desc: n.to_string(),
+                    },
+                )))
+            } else {
+                // Fall back to string matching for floats
+                let matcher = new_string_matcher(
+                    TextPatternModifier::None,
+                    false,  // lowercase
+                    false,  // all
+                    no_collapse_ws,
+                    vec![n.to_string()],
+                ).map_err(|e| ParseError::parser_error(&e))?;
+                
+                Ok(Arc::new(FieldRule::new(
+                    field.to_string(),
+                    FieldPattern::String {
+                        matcher: Arc::from(matcher),
+                        pattern_desc: n.to_string(),
+                    },
+                )))
+            }
         }
         serde_json::Value::Bool(b) => {
-            // Convert boolean to string for field matching
+            let str_val = b.to_string();
+            let matcher = new_string_matcher(
+                TextPatternModifier::None,
+                false,  // lowercase
+                false,  // all
+                no_collapse_ws,
+                vec![str_val.clone()],
+            ).map_err(|e| ParseError::parser_error(&e))?;
+            
             Ok(Arc::new(FieldRule::new(
                 field.to_string(),
-                FieldPattern::Exact(b.to_string()),
+                FieldPattern::String {
+                    matcher: Arc::from(matcher),
+                    pattern_desc: str_val,
+                },
             )))
         }
         serde_json::Value::Array(arr) => {
@@ -324,18 +379,81 @@ fn create_rule_from_ident(
             let branches: Vec<Arc<dyn Branch>> = arr
                 .iter()
                 .filter_map(|v| match v {
-                    serde_json::Value::String(s) => Some(Arc::new(FieldRule::new(
-                        field.to_string(),
-                        FieldPattern::Exact(process_string_value(s, no_collapse_ws)),
-                    )) as Arc<dyn Branch>),
-                    serde_json::Value::Number(n) => Some(Arc::new(FieldRule::new(
-                        field.to_string(),
-                        FieldPattern::Exact(n.to_string()),
-                    )) as Arc<dyn Branch>),
-                    serde_json::Value::Bool(b) => Some(Arc::new(FieldRule::new(
-                        field.to_string(),
-                        FieldPattern::Exact(b.to_string()),
-                    )) as Arc<dyn Branch>),
+                    serde_json::Value::String(s) => {
+                        let processed = process_string_value(s, no_collapse_ws);
+                        let modifier = if processed.contains('*') || processed.contains('?') {
+                            TextPatternModifier::None  // Will be handled as glob
+                        } else {
+                            TextPatternModifier::None  // Exact match
+                        };
+                        
+                        match new_string_matcher(
+                            modifier,
+                            false,  // lowercase
+                            false,  // all
+                            no_collapse_ws,
+                            vec![processed.clone()],
+                        ) {
+                            Ok(matcher) => Some(Arc::new(FieldRule::new(
+                                field.to_string(),
+                                FieldPattern::String {
+                                    matcher: Arc::from(matcher),
+                                    pattern_desc: processed,
+                                },
+                            )) as Arc<dyn Branch>),
+                            Err(_) => None,
+                        }
+                    }
+                    serde_json::Value::Number(n) => {
+                        if let Some(num) = n.as_i64() {
+                            match new_num_matcher(vec![num]) {
+                                Ok(matcher) => Some(Arc::new(FieldRule::new(
+                                    field.to_string(),
+                                    FieldPattern::Numeric {
+                                        matcher: Arc::from(matcher),
+                                        pattern_desc: n.to_string(),
+                                    },
+                                )) as Arc<dyn Branch>),
+                                Err(_) => None,
+                            }
+                        } else {
+                            match new_string_matcher(
+                                TextPatternModifier::None,
+                                false,  // lowercase
+                                false,  // all
+                                no_collapse_ws,
+                                vec![n.to_string()],
+                            ) {
+                                Ok(matcher) => Some(Arc::new(FieldRule::new(
+                                    field.to_string(),
+                                    FieldPattern::String {
+                                        matcher: Arc::from(matcher),
+                                        pattern_desc: n.to_string(),
+                                    },
+                                )) as Arc<dyn Branch>),
+                                Err(_) => None,
+                            }
+                        }
+                    }
+                    serde_json::Value::Bool(b) => {
+                        let str_val = b.to_string();
+                        match new_string_matcher(
+                            TextPatternModifier::None,
+                            false,  // lowercase
+                            false,  // all
+                            no_collapse_ws,
+                            vec![str_val.clone()],
+                        ) {
+                            Ok(matcher) => Some(Arc::new(FieldRule::new(
+                                field.to_string(),
+                                FieldPattern::String {
+                                    matcher: Arc::from(matcher),
+                                    pattern_desc: str_val,
+                                },
+                            )) as Arc<dyn Branch>),
+                            Err(_) => None,
+                        }
+                    }
                     _ => None,
                 })
                 .collect();
