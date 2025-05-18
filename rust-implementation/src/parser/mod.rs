@@ -1,5 +1,5 @@
 use crate::ast::{Branch, FieldPattern, FieldRule, NodeSimpleAnd, NodeSimpleOr};
-use crate::detection::Detection;
+use crate::rule::Detection;
 use crate::lexer::Lexer;
 use crate::lexer::token::{Token, Item};
 use crate::parser::validate::valid_token_sequence;
@@ -414,9 +414,10 @@ fn extract_all_to_rules(
     no_collapse_ws: bool,
 ) -> Result<Vec<Arc<dyn Branch>>, ParseError> {
     let mut rules = Vec::new();
+    let extracted = detection.extract();
     
-    for (key, value) in detection.extract() {
-        let rule = create_rule_from_ident(&key, &value, no_collapse_ws)?;
+    for (key, value) in extracted.iter() {
+        let rule = create_rule_from_ident(key, value, no_collapse_ws)?;
         rules.push(rule);
     }
     
@@ -452,7 +453,7 @@ fn extract_wildcard_idents(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::detection::Detection;
+    use crate::rule::Detection;
 
     #[tokio::test]
     async fn test_basic_parser() {

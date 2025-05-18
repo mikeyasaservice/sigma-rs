@@ -25,14 +25,17 @@ pub mod matcher;
 /// Error types
 pub mod error;
 
-/// Detection abstractions
-pub mod detection;
 
 /// Lexical analysis
 pub mod lexer;
 
 /// Parser implementation
 pub mod parser;
+
+/// Core event abstractions
+pub mod core {
+    pub use crate::event::Event;
+}
 
 /// Rule definitions and YAML parsing
 pub mod rule;
@@ -42,6 +45,9 @@ pub mod pattern;
 
 /// AST tree structure
 pub mod tree;
+
+/// Result types for matches
+pub mod result;
 
 /// Service layer with Tokio integration
 pub mod service;
