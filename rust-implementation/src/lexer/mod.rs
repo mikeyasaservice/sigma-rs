@@ -4,10 +4,10 @@ pub mod token;
 pub mod state;
 pub mod error;
 
-use std::borrow::Cow;
+pub use token::{Token, Item};
+pub use state::LexState;
+
 use tokio::sync::mpsc;
-use crate::lexer::token::{Token, Item};
-use crate::lexer::state::LexState;
 use crate::lexer::error::LexError;
 
 /// Lexer for Sigma detection rules

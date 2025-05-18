@@ -38,6 +38,30 @@ pub enum ParseError {
 
     #[error("wildcard compilation failed: {0}")]
     WildcardCompilationError(String),
+    
+    #[error("invalid wildcard identifier")]
+    InvalidWildcardIdent,
+    
+    #[error("unmatched parenthesis")]
+    UnmatchedParenthesis,
+    
+    #[error("no matching wildcard")]
+    NoMatchingWildcard,
+    
+    #[error("invalid keyword construct")]
+    InvalidKeywordConstruct,
+    
+    #[error("invalid selection construct")]
+    InvalidSelectionConstruct,
+    
+    #[error("unexpected token: {token:?}")]
+    UnexpectedToken { token: Token },
+    
+    #[error("invalid glob pattern: {pattern}, error: {error}")]
+    InvalidGlobPattern { pattern: String, error: String },
+    
+    #[error("unsupported value type: {value_type}")]
+    UnsupportedValueType { value_type: String },
 }
 
 impl ParseError {

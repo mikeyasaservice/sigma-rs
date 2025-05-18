@@ -39,6 +39,9 @@ pub enum Value {
     Null,
 }
 
+/// Module with event adapter for AST
+pub mod adapter;
+
 impl Value {
     /// Convert value to string if possible
     pub fn as_str(&self) -> Option<&str> {

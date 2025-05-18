@@ -205,3 +205,32 @@ pub fn new_node_not_if_negated(branch: Arc<dyn Branch>, negated: bool) -> Arc<dy
         branch
     }
 }
+
+/// Identifier node that wraps a field rule
+#[derive(Debug, Clone)]
+pub struct Identifier {
+    field_rule: FieldRule,
+}
+
+impl Identifier {
+    pub fn new(field: String, pattern: super::FieldPattern) -> Self {
+        Self {
+            field_rule: FieldRule::new(field, pattern),
+        }
+    }
+    
+    pub fn from_rule(rule: FieldRule) -> Self {
+        Self { field_rule: rule }
+    }
+}
+
+#[async_trait]
+impl Branch for Identifier {
+    async fn matches(&self, event: &dyn Event) -> MatchResult {
+        self.field_rule.matches(event).await
+    }
+    
+    fn describe(&self) -> String {
+        self.field_rule.describe()
+    }
+}

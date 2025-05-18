@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde::Serialize;
 use std::fmt::Debug;
 
-mod nodes;
+pub mod nodes;
 pub use nodes::*;
 
 /// Event trait for matching against AST nodes
