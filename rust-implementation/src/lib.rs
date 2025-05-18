@@ -16,11 +16,17 @@ pub use error::{Result, SigmaError};
 /// Event abstractions and implementations
 pub mod event;
 
-/// Matching engine and AST nodes
+/// AST nodes and matching engine
+pub mod ast;
+
+/// Matching engine
 pub mod matcher;
 
 /// Error types
 pub mod error;
+
+/// Detection abstractions
+pub mod detection;
 
 /// Lexical analysis
 pub mod lexer;

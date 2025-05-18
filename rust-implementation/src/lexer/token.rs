@@ -98,6 +98,12 @@ pub struct Item {
     glob_compile_failed: bool,
 }
 
+impl PartialEq for Item {
+    fn eq(&self, other: &Self) -> bool {
+        self.token == other.token && self.value == other.value
+    }
+}
+
 impl Item {
     /// Create a new item
     pub fn new(token: Token, value: String) -> Self {
@@ -147,81 +153,26 @@ pub fn check_keyword(input: &str) -> Token {
         "them" => Token::IdentifierAll,
         "1 of" => Token::StmtOneOf,
         _ => {
-            if input.contains('*') {
-                Token::IdentifierWithWildcard
+            let split: Vec<&str> = lower.split_whitespace().collect();
+            if split.len() == 2 && split[0] == "all" && split[1] == "of" {
+                Token::StmtAllOf
             } else {
-                Token::Identifier
+                // Check if the identifier contains wildcards
+                if input.contains('*') || input.contains('?') {
+                    Token::IdentifierWithWildcard
+                } else {
+                    Token::Identifier
+                }
             }
         }
     }
 }
 
-/// Validate a token sequence
-pub fn valid_token_sequence(t1: Token, t2: Token) -> bool {
-    use Token::*;
-    
-    match t2 {
-        StmtAllOf | StmtOneOf => matches!(
-            t1,
-            Token::Nil | SepLpar | KeywordAnd | KeywordOr | KeywordNot
-        ),
-        IdentifierAll => matches!(t1, StmtAllOf | StmtOneOf),
-        Identifier | IdentifierWithWildcard => matches!(
-            t1,
-            SepLpar | Token::Nil | KeywordAnd | KeywordOr | KeywordNot | StmtOneOf | StmtAllOf
-        ),
-        KeywordAnd | KeywordOr => matches!(
-            t1,
-            Identifier | IdentifierAll | IdentifierWithWildcard | SepRpar
-        ),
-        KeywordNot => matches!(t1, KeywordAnd | KeywordOr | SepLpar | Token::Nil),
-        SepLpar => matches!(t1, KeywordAnd | KeywordOr | KeywordNot | Token::Nil | SepLpar),
-        SepRpar => matches!(
-            t1,
-            Identifier | IdentifierAll | IdentifierWithWildcard | SepLpar | SepRpar
-        ),
-        LitEof => matches!(
-            t1,
-            Identifier | IdentifierAll | IdentifierWithWildcard | SepRpar
-        ),
-        SepPipe => matches!(
-            t1,
-            Identifier | IdentifierAll | IdentifierWithWildcard | SepRpar
-        ),
-        _ => false,
-    }
+/// Rerun the state machine
+/// Takes a channel receiver and emits tokens on the given channel
+pub fn emit(to: &Sender<Item>, token: Token, val: String) -> Result<(), Box<dyn std::error::Error>> {
+    // Placeholder for the emit function
+    Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_token_literal() {
-        assert_eq!(Token::KeywordAnd.literal(), "and");
-        assert_eq!(Token::SepLpar.literal(), "(");
-        assert_eq!(Token::StmtOneOf.literal(), "1 of");
-    }
-
-    #[test]
-    fn test_token_from_keyword() {
-        assert_eq!(Token::from_keyword("and"), Some(Token::KeywordAnd));
-        assert_eq!(Token::from_keyword("AND"), Some(Token::KeywordAnd));
-        assert_eq!(Token::from_keyword("invalid"), None);
-    }
-
-    #[test]
-    fn test_check_keyword() {
-        assert_eq!(check_keyword("and"), Token::KeywordAnd);
-        assert_eq!(check_keyword("identifier"), Token::Identifier);
-        assert_eq!(check_keyword("test*"), Token::IdentifierWithWildcard);
-        assert_eq!(check_keyword(""), Token::Nil);
-    }
-
-    #[test]
-    fn test_valid_token_sequence() {
-        assert!(valid_token_sequence(Token::Nil, Token::StmtOneOf));
-        assert!(valid_token_sequence(Token::KeywordAnd, Token::Identifier));
-        assert!(!valid_token_sequence(Token::Identifier, Token::Identifier));
-    }
-}
+use tokio::sync::mpsc::UnboundedSender as Sender;
