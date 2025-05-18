@@ -1,0 +1,81 @@
+[package]
+name = "sigma-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Sigma-rs Contributors"]
+description = "High-performance Rust implementation of Sigma rule engine with Redpanda integration"
+license = "Apache-2.0"
+repository = "https://github.com/yourusername/sigma-rs"
+keywords = ["sigma", "security", "detection", "rules", "redpanda"]
+categories = ["security", "parser-implementations"]
+
+[dependencies]
+# Core
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+regex = "1.10"
+glob = "0.3"
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Tokio Stack
+tokio = { version = "1.35", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec", "io"] }
+axum = { version = "0.8.4", features = ["macros", "json", "tracing"] }
+tonic = { version = "0.11", features = ["transport", "tls"] }
+prost = "0.12"
+tower = { version = "0.4", features = ["timeout", "retry", "util"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "timeout"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+bytes = "1.5"
+
+# Performance
+aho-corasick = "1.1"
+memchr = "2.7"
+dashmap = "5.5"
+once_cell = "1.19"
+
+# Async/Streaming
+futures = "0.3"
+rdkafka = { version = "0.36", features = ["tokio"] }
+async-trait = "0.1"
+pin-project = "1.1"
+
+# Utilities
+arc-swap = "1.6"
+parking_lot = "0.12"
+num_cpus = "1.16"
+uuid = { version = "1.6", features = ["v4"] }
+chrono = "0.4"
+
+[build-dependencies]
+tonic-build = "0.11"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.4"
+tokio-test = "0.4"
+insta = "1.34"
+quickcheck = "1.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+
+[profile.bench]
+debug = true
+
+[[bin]]
+name = "sigma-engine"
+path = "src/bin/engine.rs"
+
+[[bench]]
+name = "rule_matching"
+harness = false
+
+[[example]]
+name = "simple_detection"
+path = "examples/simple_detection.rs"
