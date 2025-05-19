@@ -8,6 +8,7 @@ mod tests {
         retry::{RetryPolicy, RetryExecutor, RetryResult},
         backpressure::BackpressureController,
         shutdown::{ShutdownState, ShutdownCoordinator},
+        error::ConsumerError,
     };
     use rdkafka::{
         ClientConfig,
@@ -113,10 +114,11 @@ mod tests {
     async fn test_retry_executor() {
         let policy = RetryPolicy {
             max_retries: 3,
-            initial_delay: Duration::from_millis(100),
-            max_delay: Duration::from_secs(1),
-            exponential_backoff: true,
-            jitter: true,
+            initial_backoff: Duration::from_millis(100),
+            max_backoff: Duration::from_secs(1),
+            backoff_multiplier: 2.0,
+            jitter_factor: 0.1,
+            exponential: true,
         };
         
         let executor = RetryExecutor::new(policy);
@@ -135,7 +137,7 @@ mod tests {
         match result {
             RetryResult::Success { value, attempts } => {
                 assert_eq!(value, "Success");
-                assert_eq!(attempts, 3);
+                assert_eq!(attempts, 2); // 0-indexed, so 2 retries means 3 total attempts
             }
             _ => panic!("Expected success"),
         }

@@ -257,13 +257,18 @@ mod tests {
         let policy = RetryPolicy::fixed(2, Duration::from_millis(10));
         let executor = RetryExecutor::new(policy);
         
-        let mut count = 0;
-        let result = executor.execute(|| async {
-            count += 1;
-            if count < 3 {
-                Err("temporary error")
-            } else {
-                Ok("success")
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let count_clone = count.clone();
+        
+        let result = executor.execute(move || {
+            let count = count_clone.clone();
+            async move {
+                let current = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if current < 2 {
+                    Err("temporary error")
+                } else {
+                    Ok("success")
+                }
             }
         }).await;
         

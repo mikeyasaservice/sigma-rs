@@ -2,9 +2,7 @@
 /// Measures performance of various components and compares with Go implementation
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use sigma_rs::{DynamicEvent, Event, Rule, Ruleset};
-use std::fs;
-use std::path::Path;
+use sigma_rs::{DynamicEvent, Selector};
 use serde_json::{json, Value};
 
 /// Load test rules for benchmarking
@@ -254,10 +252,10 @@ fn benchmark_pattern_matching(c: &mut Criterion) {
 }
 
 fn benchmark_rule_evaluation(c: &mut Criterion) {
-    let rules = load_benchmark_rules();
-    let events = generate_test_events(1000);
+    let _rules = load_benchmark_rules();
+    let _events = generate_test_events(1000);
     
-    let mut group = c.benchmark_group("rule_evaluation");
+    let group = c.benchmark_group("rule_evaluation");
     
     // TODO: Once Tree implementation is complete
     // for (i, rule_str) in rules.iter().enumerate() {
@@ -278,8 +276,8 @@ fn benchmark_rule_evaluation(c: &mut Criterion) {
 }
 
 fn benchmark_ruleset_evaluation(c: &mut Criterion) {
-    let rules = load_benchmark_rules();
-    let events = generate_test_events(100);
+    let _rules = load_benchmark_rules();
+    let _events = generate_test_events(100);
     
     // TODO: Once Ruleset implementation is complete
     // let ruleset = Ruleset::new();

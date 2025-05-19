@@ -20,7 +20,7 @@ use crate::{SigmaEngineBuilder, Result as SigmaResult};
 
 /// Main Sigma service with full Tokio integration
 pub struct SigmaService {
-    engine: Arc<SigmaEngine>,
+    _engine: Arc<SigmaEngine>,
     health_server: Option<JoinHandle<()>>,
     metrics_server: Option<JoinHandle<()>>,
     grpc_server: Option<JoinHandle<()>>,
@@ -54,7 +54,7 @@ impl SigmaService {
         };
         
         Ok(Self {
-            engine,
+            _engine: engine,
             health_server,
             metrics_server,
             grpc_server,
@@ -97,7 +97,7 @@ impl SigmaService {
     }
     
     /// Start health check HTTP server using Axum
-    async fn start_health_server(engine: Arc<SigmaEngine>) -> () {
+    async fn start_health_server(engine: Arc<SigmaEngine>) {
         let app = Router::new()
             .route("/health", get(health_handler))
             .route("/ready", get(ready_handler))
@@ -122,7 +122,7 @@ impl SigmaService {
     }
     
     /// Start metrics HTTP server using Axum
-    async fn start_metrics_server(engine: Arc<SigmaEngine>) -> () {
+    async fn start_metrics_server(engine: Arc<SigmaEngine>) {
         let app = Router::new()
             .route("/metrics", get(metrics_handler))
             .layer(TraceLayer::new_for_http())
@@ -146,7 +146,7 @@ impl SigmaService {
     }
     
     /// Start gRPC control plane server
-    async fn start_grpc_server(_engine: Arc<SigmaEngine>) -> () {
+    async fn start_grpc_server(_engine: Arc<SigmaEngine>) {
         // This will be implemented when we add the proto definitions
         info!("gRPC server starting on port 50051");
         // Placeholder for now
@@ -154,7 +154,7 @@ impl SigmaService {
     }
     
     /// Start Kafka consumer
-    async fn start_kafka_consumer(engine: Arc<SigmaEngine>, builder: SigmaEngineBuilder) -> () {
+    async fn start_kafka_consumer(engine: Arc<SigmaEngine>, builder: SigmaEngineBuilder) {
         if let Some(kafka_config) = builder.kafka_config {
             info!("Starting Kafka consumer for topics: {:?}", kafka_config.topics);
             

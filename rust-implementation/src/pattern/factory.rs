@@ -222,8 +222,9 @@ mod tests {
 
     #[test]
     fn test_new_string_matcher_all() {
+        // When using 'all' with ContainModifier instead of None, patterns become *pattern*
         let matcher = new_string_matcher(
-            TextPatternModifier::None,
+            TextPatternModifier::Contains,
             false,
             true,
             false,
@@ -231,9 +232,13 @@ mod tests {
         )
         .unwrap();
 
+        // With 'all' flag and Contains modifier, the value must contain all patterns
         assert!(matcher.string_match("test value"));
+        assert!(matcher.string_match("value test"));
+        assert!(matcher.string_match("this test contains value"));
         assert!(!matcher.string_match("test"));
         assert!(!matcher.string_match("value"));
+        assert!(!matcher.string_match("neither"));
     }
 
     #[test]

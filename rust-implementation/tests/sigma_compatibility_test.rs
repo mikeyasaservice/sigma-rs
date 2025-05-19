@@ -1,11 +1,10 @@
 //! Tests for Sigma rule compatibility and parsing
 
 use sigma_rs::{
-    rule::{Rule, rule_from_yaml},
+    rule::{Rule, rule_from_yaml, Detection},
     parser::Parser,
     event::Event,
     error::SigmaError,
-    detection::Detection,
 };
 use std::collections::HashMap;
 use serde_json::json;
@@ -31,8 +30,8 @@ detection:
     assert_eq!(rule.id, "test-001");
 }
 
-#[test]
-fn test_complex_conditions() {
+#[tokio::test]
+async fn test_complex_conditions() {
     let rule_yaml = r#"
 title: Complex Detection
 detection:
@@ -48,7 +47,7 @@ detection:
 "#;
     
     let rule = rule_from_yaml(rule_yaml.as_bytes()).unwrap();
-    let parser = Parser::new(rule.detection.clone(), false);
+    let mut parser = Parser::new(rule.detection.clone(), false);
     
     // Test should parse without errors
     assert!(parser.run().await.is_ok());
@@ -133,7 +132,7 @@ detection:
 "#;
     
     let rule = rule_from_yaml(rule_yaml.as_bytes()).unwrap();
-    let parser = Parser::new(rule.detection.clone(), false);
+    let mut parser = Parser::new(rule.detection.clone(), false);
     let tree = parser.run().await.unwrap();
     
     // Test matching event

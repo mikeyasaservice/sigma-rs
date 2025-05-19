@@ -91,22 +91,26 @@ pub struct ConsumerConfigBuilder {
 }
 
 impl ConsumerConfigBuilder {
+    /// Create a new consumer config builder
     pub fn new() -> Self {
         Self {
             config: ConsumerConfig::default(),
         }
     }
     
+    /// Set the broker addresses
     pub fn brokers(mut self, brokers: String) -> Self {
         self.config.brokers = brokers;
         self
     }
     
+    /// Set the consumer group ID
     pub fn group_id(mut self, group_id: String) -> Self {
         self.config.group_id = group_id;
         self
     }
     
+    /// Set the topics to consume
     pub fn topics(mut self, topics: Vec<String>) -> Self {
         self.config.topics = topics;
         self
@@ -122,52 +126,74 @@ impl ConsumerConfigBuilder {
         self
     }
     
+    /// Set the batch size for offset commits
     pub fn batch_size(mut self, size: usize) -> Self {
         self.config.batch_size = size;
         self
     }
     
+    /// Set the retry policy
     pub fn retry_policy(mut self, policy: crate::consumer::retry::RetryPolicy) -> Self {
         self.config.retry_policy = policy;
         self
     }
     
+    /// Set the dead letter queue topic
     pub fn dlq_topic(mut self, topic: String) -> Self {
         self.config.dlq_topic = Some(topic);
         self
     }
     
+    /// Set the number of retries before sending to DLQ
+    pub fn dlq_after_retries(mut self, retries: u32) -> Self {
+        self.config.dlq_after_retries = retries;
+        self
+    }
+    
+    /// Set the channel buffer size
     pub fn channel_buffer_size(mut self, size: usize) -> Self {
         self.config.channel_buffer_size = size;
         self
     }
     
+    /// Set the maximum number of inflight messages
     pub fn max_inflight_messages(mut self, max: usize) -> Self {
         self.config.max_inflight_messages = max;
         self
     }
     
+    /// Set the metrics reporting interval
     pub fn metrics_interval(mut self, interval: Duration) -> Self {
         self.config.metrics_interval = interval;
         self
     }
     
+    /// Enable detailed metrics collection
     pub fn enable_detailed_metrics(mut self, enable: bool) -> Self {
         self.config.enable_detailed_metrics = enable;
         self
     }
     
+    /// Add a custom Kafka property
     pub fn kafka_property(mut self, key: String, value: String) -> Self {
         self.config.kafka_properties.insert(key, value);
         self
     }
     
+    /// Build the consumer configuration
     pub fn build(self) -> ConsumerConfig {
         self.config
     }
 }
 
+impl Default for ConsumerConfigBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConsumerConfig {
+    /// Create a new consumer config builder
     pub fn builder() -> ConsumerConfigBuilder {
         ConsumerConfigBuilder::new()
     }

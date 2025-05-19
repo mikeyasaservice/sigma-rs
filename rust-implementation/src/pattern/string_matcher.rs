@@ -3,7 +3,7 @@
 use crate::pattern::traits::StringMatcher;
 use glob::Pattern as GlobPattern;
 use regex::Regex;
-use std::sync::Arc;
+use std::borrow::Cow;
 
 /// Pattern for exact content matching
 #[derive(Debug, Clone)]
@@ -16,7 +16,7 @@ pub struct ContentPattern {
 impl StringMatcher for ContentPattern {
     fn string_match(&self, value: &str) -> bool {
         let value = handle_whitespace(value, self.no_collapse_ws);
-        lower_case_if_needed(&value, self.lowercase) == lower_case_if_needed(&self.token, self.lowercase)
+        lower_case_if_needed(value.as_ref(), self.lowercase) == lower_case_if_needed(&self.token, self.lowercase)
     }
 }
 
@@ -31,8 +31,8 @@ pub struct PrefixPattern {
 impl StringMatcher for PrefixPattern {
     fn string_match(&self, value: &str) -> bool {
         let value = handle_whitespace(value, self.no_collapse_ws);
-        lower_case_if_needed(&value, self.lowercase)
-            .starts_with(&lower_case_if_needed(&self.token, self.lowercase))
+        lower_case_if_needed(value.as_ref(), self.lowercase)
+            .starts_with(lower_case_if_needed(&self.token, self.lowercase).as_ref())
     }
 }
 
@@ -47,8 +47,8 @@ pub struct SuffixPattern {
 impl StringMatcher for SuffixPattern {
     fn string_match(&self, value: &str) -> bool {
         let value = handle_whitespace(value, self.no_collapse_ws);
-        lower_case_if_needed(&value, self.lowercase)
-            .ends_with(&lower_case_if_needed(&self.token, self.lowercase))
+        lower_case_if_needed(value.as_ref(), self.lowercase)
+            .ends_with(lower_case_if_needed(&self.token, self.lowercase).as_ref())
     }
 }
 
@@ -127,22 +127,22 @@ impl StringMatcher for StringMatchersConj {
 // Helper functions
 
 lazy_static::lazy_static! {
-    static ref WS_COLLAPSE: Regex = Regex::new(r"\s+").unwrap();
+    static ref WS_COLLAPSE: Regex = Regex::new(r"\s+").expect("Invalid regex pattern for whitespace collapse");
 }
 
-fn handle_whitespace(value: &str, no_collapse_ws: bool) -> String {
+fn handle_whitespace(value: &str, no_collapse_ws: bool) -> Cow<'_, str> {
     if no_collapse_ws {
-        value.to_string()
+        Cow::Borrowed(value)
     } else {
-        WS_COLLAPSE.replace_all(value, " ").to_string()
+        WS_COLLAPSE.replace_all(value, " ")
     }
 }
 
-fn lower_case_if_needed(value: &str, lowercase: bool) -> String {
+fn lower_case_if_needed(value: &str, lowercase: bool) -> Cow<'_, str> {
     if lowercase {
-        value.to_lowercase()
+        Cow::Owned(value.to_lowercase())
     } else {
-        value.to_string()
+        Cow::Borrowed(value)
     }
 }
 
@@ -196,7 +196,10 @@ pub fn escape_sigma_for_glob(pattern: &str) -> String {
 
     // Reverse the result since we built it backwards
     result.reverse();
-    String::from_utf8(result).unwrap_or_else(|_| pattern.to_string())
+    
+    // We only deal with ASCII characters from the original string
+    // and backslashes, so this conversion should never fail
+    String::from_utf8(result).expect("Invalid UTF-8 in escaped pattern")
 }
 
 

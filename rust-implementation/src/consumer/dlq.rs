@@ -6,7 +6,7 @@ use rdkafka::message::{OwnedMessage, Headers};
 use rdkafka::Message;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 use serde_json::json;
 
 /// DLQ producer for handling failed messages

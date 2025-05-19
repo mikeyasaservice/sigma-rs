@@ -84,10 +84,10 @@ fn run_integration_tests() -> Result<()> {
     
     // Test the complete pipeline
     let test_cases = vec![
-        ("Simple rule evaluation", test_simple_rule_evaluation),
-        ("Complex conditions", test_complex_conditions),
-        ("Array value matching", test_array_values),
-        ("Modifier handling", test_modifiers),
+        ("Simple rule evaluation", test_simple_rule_evaluation as fn() -> Result<()>),
+        ("Complex conditions", test_complex_conditions as fn() -> Result<()>),
+        ("Array value matching", test_array_values as fn() -> Result<()>),
+        ("Modifier handling", test_modifiers as fn() -> Result<()>),
     ];
     
     for (name, test_fn) in test_cases {

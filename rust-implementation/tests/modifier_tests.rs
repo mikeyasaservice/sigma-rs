@@ -1,7 +1,7 @@
 //! Comprehensive tests for all Sigma modifiers
 
 use sigma_rs::{
-    pattern::{TextPatternModifier, string_matcher::new_string_matcher},
+    pattern::{TextPatternModifier, new_string_matcher},
     rule::rule_from_yaml,
     parser::Parser,
 };

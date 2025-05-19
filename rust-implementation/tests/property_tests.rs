@@ -2,7 +2,7 @@
 /// Uses proptest to generate random inputs and verify properties
 
 use proptest::prelude::*;
-use sigma_rs::{Event, DynamicEvent, Rule};
+use sigma_rs::{Event, DynamicEvent, Rule, Selector};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 

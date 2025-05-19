@@ -1,3 +1,32 @@
+//! Sigma rule parsing and representation
+//!
+//! This module provides structures and functions for parsing Sigma rules
+//! from YAML format and converting them into an internal representation.
+//!
+//! # Example
+//!
+//! ```
+//! use sigma_rs::rule::{rule_from_yaml, Rule};
+//!
+//! # fn example() -> anyhow::Result<()> {
+//! let yaml_content = r#"
+//! title: Suspicious Process Creation
+//! id: 12345678-1234-1234-1234-123456789abc
+//! status: stable
+//! description: Detects suspicious process creation
+//! detection:
+//!   selection:
+//!     EventID: 1
+//!     CommandLine|contains: 'powershell'
+//!   condition: selection
+//! "#;
+//!
+//! let rule = rule_from_yaml(yaml_content.as_bytes())?;
+//! assert_eq!(rule.title, "Suspicious Process Creation");
+//! # Ok(())
+//! # }
+//! ```
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 

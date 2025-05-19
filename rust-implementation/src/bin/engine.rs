@@ -1,6 +1,7 @@
 //! Main Sigma engine binary
 
 use sigma_rs::{SigmaEngineBuilder, KafkaConfig};
+use std::collections::HashMap;
 use tracing::info;
 
 #[tokio::main]
@@ -30,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
                 .split(',')
                 .map(|s| s.to_string())
                 .collect(),
-            properties: std::collections::HashMap::new(),
+            properties: HashMap::new(),
             batch_size: None,
             max_retries: None,
             dlq_topic: None,

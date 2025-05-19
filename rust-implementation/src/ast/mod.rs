@@ -1,7 +1,8 @@
 use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
+use serde::Serialize;
 use std::fmt::Debug;
 
+/// AST node implementations
 pub mod nodes;
 pub use nodes::*;
 
@@ -17,15 +18,19 @@ pub trait Event: Send + Sync {
 /// Result of a match operation
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchResult {
+    /// Whether the match was successful
     pub matched: bool,
+    /// Whether the rule was applicable
     pub applicable: bool,
 }
 
 impl MatchResult {
+    /// Create a new match result
     pub fn new(matched: bool, applicable: bool) -> Self {
         Self { matched, applicable }
     }
 
+    /// Create a successful match result
     pub fn matched() -> Self {
         Self {
             matched: true,
@@ -33,6 +38,7 @@ impl MatchResult {
         }
     }
 
+    /// Create a failed match result
     pub fn not_matched() -> Self {
         Self {
             matched: false,
@@ -40,6 +46,7 @@ impl MatchResult {
         }
     }
 
+    /// Create a not applicable result
     pub fn not_applicable() -> Self {
         Self {
             matched: false,
@@ -58,7 +65,7 @@ pub trait Branch: Debug + Send + Sync {
     fn describe(&self) -> String;
 }
 
-use crate::pattern::{StringMatcher, NumMatcher, TextPatternModifier, new_string_matcher, new_num_matcher};
+use crate::pattern::{StringMatcher, NumMatcher, TextPatternModifier, new_string_matcher};
 use std::sync::Arc;
 
 /// Field rule for matching event fields

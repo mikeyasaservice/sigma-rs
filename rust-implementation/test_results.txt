@@ -1,0 +1,2100 @@
+   Compiling sigma-rs v0.1.0 (/Users/mikesaxton/Development/sigma-rs/rust-implementation)
+warning: unused import: `crate::rule::Rule`
+   --> src/tree/builder.rs:426:9
+    |
+426 |     use crate::rule::Rule;
+    |         ^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Event as AstEvent`
+  --> src/tree/mod.rs:55:47
+   |
+55 |     use crate::ast::{FieldRule, FieldPattern, Event as AstEvent};
+   |                                               ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> src/tree/mod.rs:60:9
+   |
+60 |     use std::collections::HashMap;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `tree`
+   --> src/tree/builder.rs:443:13
+    |
+443 |         let tree = build_tree(rule_handle).await.unwrap();
+    |             ^^^^ help: if this is intentional, prefix it with an underscore: `_tree`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `tree`
+   --> src/tree/builder.rs:465:13
+    |
+465 |         let tree = build_tree(rule_handle).await.unwrap();
+    |             ^^^^ help: if this is intentional, prefix it with an underscore: `_tree`
+
+warning: use of `async fn` in public traits is discouraged as auto trait bounds cannot be specified
+   --> src/event.rs:208:5
+    |
+208 |     async fn keywords_async(&self) -> Result<(Vec<String>, bool)> {
+    |     ^^^^^
+    |
+    = note: you can suppress this lint if you plan to use the trait only in your own code, or do not care about auto traits like `Send` on the `Future`
+    = note: `#[warn(async_fn_in_trait)]` on by default
+help: you can alternatively desugar to a normal `fn` that returns `impl Future` and add any desired bounds such as `Send`, but these cannot be relaxed without a breaking API change
+    |
+208 ~     fn keywords_async(&self) -> impl std::future::Future<Output = Result<(Vec<String>, bool)>> + Send {async {
+209 |         Ok(self.keywords())
+210 ~     } }
+    |
+
+warning: use of `async fn` in public traits is discouraged as auto trait bounds cannot be specified
+   --> src/event.rs:213:5
+    |
+213 |     async fn select_async(&self, key: &str) -> Result<(Option<Value>, bool)> {
+    |     ^^^^^
+    |
+    = note: you can suppress this lint if you plan to use the trait only in your own code, or do not care about auto traits like `Send` on the `Future`
+help: you can alternatively desugar to a normal `fn` that returns `impl Future` and add any desired bounds such as `Send`, but these cannot be relaxed without a breaking API change
+    |
+213 ~     fn select_async(&self, key: &str) -> impl std::future::Future<Output = Result<(Option<Value>, bool)>> + Send {async {
+214 |         Ok(self.select(key))
+215 ~     } }
+    |
+
+warning: missing documentation for a struct field
+  --> src/ast/mod.rs:74:5
+   |
+74 |     pub field: String,
+   |     ^^^^^^^^^^^^^^^^^
+   |
+note: the lint level is defined here
+  --> src/lib.rs:57:9
+   |
+57 | #![warn(missing_docs)]
+   |         ^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/ast/mod.rs:75:5
+   |
+75 |     pub pattern: FieldPattern,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/ast/mod.rs:83:9
+   |
+83 |         matcher: Arc<dyn StringMatcher>,
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/ast/mod.rs:84:9
+   |
+84 |         pattern_desc: String,
+   |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/ast/mod.rs:88:9
+   |
+88 |         matcher: Arc<dyn NumMatcher>,
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/ast/mod.rs:89:9
+   |
+89 |         pattern_desc: String,
+   |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> src/ast/mod.rs:128:5
+    |
+128 |     pub fn new(field: String, pattern: FieldPattern) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> src/ast/mod.rs:170:5
+    |
+170 |     pub async fn matches(&self, event: &dyn Event) -> MatchResult {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+ --> src/ast/nodes.rs:8:5
+  |
+8 |     pub left: Arc<dyn Branch>,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+ --> src/ast/nodes.rs:9:5
+  |
+9 |     pub right: Arc<dyn Branch>,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> src/ast/nodes.rs:13:5
+   |
+13 |     pub fn new(left: Arc<dyn Branch>, right: Arc<dyn Branch>) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/ast/nodes.rs:41:5
+   |
+41 |     pub left: Arc<dyn Branch>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/ast/nodes.rs:42:5
+   |
+42 |     pub right: Arc<dyn Branch>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> src/ast/nodes.rs:46:5
+   |
+46 |     pub fn new(left: Arc<dyn Branch>, right: Arc<dyn Branch>) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/ast/nodes.rs:74:5
+   |
+74 |     pub branch: Arc<dyn Branch>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> src/ast/nodes.rs:78:5
+   |
+78 |     pub fn new(branch: Arc<dyn Branch>) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/ast/nodes.rs:101:5
+    |
+101 |     pub branches: Vec<Arc<dyn Branch>>,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> src/ast/nodes.rs:105:5
+    |
+105 |     pub fn new(branches: Vec<Arc<dyn Branch>>) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/ast/nodes.rs:149:5
+    |
+149 |     pub branches: Vec<Arc<dyn Branch>>,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> src/ast/nodes.rs:153:5
+    |
+153 |     pub fn new(branches: Vec<Arc<dyn Branch>>) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> src/ast/nodes.rs:216:5
+    |
+216 |     pub fn new(field: String, pattern: super::FieldPattern) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> src/ast/nodes.rs:222:5
+    |
+222 |     pub fn from_rule(rule: FieldRule) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/matcher.rs:31:5
+   |
+31 |     pub left: Box<dyn Branch>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/matcher.rs:32:5
+   |
+32 |     pub right: Box<dyn Branch>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/matcher.rs:59:5
+   |
+59 |     pub left: Box<dyn Branch>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/matcher.rs:60:5
+   |
+60 |     pub right: Box<dyn Branch>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/matcher.rs:87:5
+   |
+87 |     pub branch: Box<dyn Branch>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/matcher.rs:112:5
+    |
+112 |     pub branches: Vec<Box<dyn Branch>>,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/matcher.rs:160:5
+    |
+160 |     pub branches: Vec<Box<dyn Branch>>,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+ --> src/lexer/mod.rs:3:1
+  |
+3 | pub mod token;
+  | ^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+ --> src/lexer/mod.rs:4:1
+  |
+4 | pub mod state;
+  | ^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+ --> src/lexer/mod.rs:5:1
+  |
+5 | pub mod error;
+  | ^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+ --> src/lexer/token.rs:8:5
+  |
+8 |     Error = 0,
+  |     ^^^^^
+
+warning: missing documentation for a variant
+ --> src/lexer/token.rs:9:5
+  |
+9 |     Unsupported = 1,
+  |     ^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:10:5
+   |
+10 |     Nil = 2,
+   |     ^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:13:5
+   |
+13 |     Identifier = 3,
+   |     ^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:14:5
+   |
+14 |     IdentifierWithWildcard = 4,
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:15:5
+   |
+15 |     IdentifierAll = 5,
+   |     ^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:18:5
+   |
+18 |     LitEof = 6,
+   |     ^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:21:5
+   |
+21 |     SepLpar = 7,
+   |     ^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:22:5
+   |
+22 |     SepRpar = 8,
+   |     ^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:23:5
+   |
+23 |     SepPipe = 9,
+   |     ^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:26:5
+   |
+26 |     OpEq = 10,
+   |     ^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:27:5
+   |
+27 |     OpGt = 11,
+   |     ^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:28:5
+   |
+28 |     OpGte = 12,
+   |     ^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:29:5
+   |
+29 |     OpLt = 13,
+   |     ^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:30:5
+   |
+30 |     OpLte = 14,
+   |     ^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:33:5
+   |
+33 |     KeywordAnd = 15,
+   |     ^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:34:5
+   |
+34 |     KeywordOr = 16,
+   |     ^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:35:5
+   |
+35 |     KeywordNot = 17,
+   |     ^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:36:5
+   |
+36 |     KeywordAgg = 18,
+   |     ^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:39:5
+   |
+39 |     StmtOneOf = 19,
+   |     ^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/token.rs:40:5
+   |
+40 |     StmtAllOf = 20,
+   |     ^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/lexer/token.rs:94:5
+   |
+94 |     pub token: Token,
+   |     ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/lexer/token.rs:95:5
+   |
+95 |     pub value: String,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+ --> src/lexer/state.rs:7:5
+  |
+7 |     Condition,
+  |     ^^^^^^^^^
+
+warning: missing documentation for a variant
+ --> src/lexer/state.rs:8:5
+  |
+8 |     OneOf,
+  |     ^^^^^
+
+warning: missing documentation for a variant
+ --> src/lexer/state.rs:9:5
+  |
+9 |     AllOf,
+  |     ^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/state.rs:10:5
+   |
+10 |     Eof,
+   |     ^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/state.rs:11:5
+   |
+11 |     Pipe,
+   |     ^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/state.rs:12:5
+   |
+12 |     Lpar,
+   |     ^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/state.rs:13:5
+   |
+13 |     Rpar,
+   |     ^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/state.rs:14:5
+   |
+14 |     RparWithTokens,
+   |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/state.rs:15:5
+   |
+15 |     AccumulateBeforeWhitespace,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/state.rs:16:5
+   |
+16 |     Whitespace,
+   |     ^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/state.rs:17:5
+   |
+17 |     Aggregation,
+   |     ^^^^^^^^^^^
+
+warning: missing documentation for a variant
+ --> src/lexer/error.rs:8:5
+  |
+8 |     ChannelClosed,
+  |     ^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/error.rs:11:5
+   |
+11 |     UnsupportedToken(String),
+   |     ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/error.rs:14:5
+   |
+14 |     InvalidSequence { prev: Token, next: Token },
+   |     ^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/lexer/error.rs:14:23
+   |
+14 |     InvalidSequence { prev: Token, next: Token },
+   |                       ^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/lexer/error.rs:14:36
+   |
+14 |     InvalidSequence { prev: Token, next: Token },
+   |                                    ^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/error.rs:17:5
+   |
+17 |     UnexpectedEof,
+   |     ^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/error.rs:20:5
+   |
+20 |     InvalidUtf8(usize),
+   |     ^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/lexer/error.rs:23:5
+   |
+23 |     ParseError(String),
+   |     ^^^^^^^^^^
+
+warning: missing documentation for a module
+ --> src/parser/mod.rs:9:1
+  |
+9 | pub mod error;
+  | ^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> src/parser/mod.rs:10:1
+   |
+10 | pub mod validate;
+   | ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> src/rule/mod.rs:33:1
+   |
+33 | pub mod detection;
+   | ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> src/rule/mod.rs:34:1
+   |
+34 | pub mod logsource;
+   | ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+  --> src/rule/mod.rs:35:1
+   |
+35 | pub mod tags;
+   | ^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:46:5
+   |
+46 |     pub author: Option<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:49:5
+   |
+49 |     pub description: Option<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:52:5
+   |
+52 |     pub falsepositives: Vec<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:55:5
+   |
+55 |     pub fields: Vec<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:57:5
+   |
+57 |     pub id: String,
+   |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:60:5
+   |
+60 |     pub level: Option<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:62:5
+   |
+62 |     pub title: String,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:65:5
+   |
+65 |     pub status: Option<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:68:5
+   |
+68 |     pub references: Vec<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:71:5
+   |
+71 |     pub logsource: Logsource,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:73:5
+   |
+73 |     pub detection: Detection,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:76:5
+   |
+76 |     pub tags: Vec<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:79:5
+   |
+79 |     pub date: Option<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:82:5
+   |
+82 |     pub modified: Option<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:96:5
+   |
+96 |     pub rule: Rule,
+   |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:97:5
+   |
+97 |     pub path: PathBuf,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:98:5
+   |
+98 |     pub multipart: bool,
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/mod.rs:99:5
+   |
+99 |     pub no_collapse_ws: bool,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+ --> src/rule/logsource.rs:8:5
+  |
+8 |     pub product: Option<String>,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/logsource.rs:11:5
+   |
+11 |     pub category: Option<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/logsource.rs:14:5
+   |
+14 |     pub service: Option<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/rule/logsource.rs:17:5
+   |
+17 |     pub definition: Option<String>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/pattern/mod.rs:26:5
+   |
+26 |     None,
+   |     ^^^^
+
+warning: missing documentation for a variant
+  --> src/pattern/mod.rs:27:5
+   |
+27 |     Contains,
+   |     ^^^^^^^^
+
+warning: missing documentation for a variant
+  --> src/pattern/mod.rs:28:5
+   |
+28 |     Prefix,
+   |     ^^^^^^
+
+warning: missing documentation for a variant
+  --> src/pattern/mod.rs:29:5
+   |
+29 |     Suffix,
+   |     ^^^^^^
+
+warning: missing documentation for a variant
+  --> src/pattern/mod.rs:30:5
+   |
+30 |     All,
+   |     ^^^
+
+warning: missing documentation for a variant
+  --> src/pattern/mod.rs:31:5
+   |
+31 |     Regex,
+   |     ^^^^^
+
+warning: missing documentation for a variant
+  --> src/pattern/mod.rs:32:5
+   |
+32 |     Keyword,
+   |     ^^^^^^^
+
+warning: missing documentation for a struct field
+ --> src/pattern/num_matcher.rs:8:5
+  |
+8 |     pub value: i64,
+  |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> src/pattern/num_matcher.rs:24:5
+   |
+24 |     pub fn new(matchers: Vec<Box<dyn NumMatcher>>) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/string_matcher.rs:11:5
+   |
+11 |     pub token: String,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/string_matcher.rs:12:5
+   |
+12 |     pub lowercase: bool,
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/string_matcher.rs:13:5
+   |
+13 |     pub no_collapse_ws: bool,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/string_matcher.rs:26:5
+   |
+26 |     pub token: String,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/string_matcher.rs:27:5
+   |
+27 |     pub lowercase: bool,
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/string_matcher.rs:28:5
+   |
+28 |     pub no_collapse_ws: bool,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/string_matcher.rs:42:5
+   |
+42 |     pub token: String,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/string_matcher.rs:43:5
+   |
+43 |     pub lowercase: bool,
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/string_matcher.rs:44:5
+   |
+44 |     pub no_collapse_ws: bool,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/string_matcher.rs:58:5
+   |
+58 |     pub regex: Regex,
+   |     ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/string_matcher.rs:70:5
+   |
+70 |     pub glob: GlobPattern,
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/string_matcher.rs:71:5
+   |
+71 |     pub no_collapse_ws: bool,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> src/pattern/string_matcher.rs:88:5
+   |
+88 |     pub fn new(matchers: Vec<Box<dyn StringMatcher>>) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+  --> src/pattern/string_matcher.rs:92:5
+   |
+92 |     pub fn optimize(self) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> src/pattern/string_matcher.rs:111:5
+    |
+111 |     pub fn new(matchers: Vec<Box<dyn StringMatcher>>) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> src/pattern/string_matcher.rs:115:5
+    |
+115 |     pub fn optimize(self) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/traits.rs:20:5
+   |
+20 |     pub matched: bool,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/pattern/traits.rs:21:5
+   |
+21 |     pub applicable: bool,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> src/pattern/traits.rs:25:5
+   |
+25 |     pub fn new(matched: bool, applicable: bool) -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> src/pattern/traits.rs:29:5
+   |
+29 |     pub fn matched() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> src/pattern/traits.rs:36:5
+   |
+36 |     pub fn not_matched() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+  --> src/pattern/traits.rs:43:5
+   |
+43 |     pub fn not_applicable() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a module
+ --> src/tree/mod.rs:6:1
+  |
+6 | pub mod builder;
+  | ^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/tree/mod.rs:13:5
+   |
+13 |     pub root: Arc<dyn Branch>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/tree/mod.rs:14:5
+   |
+14 |     pub rule: Arc<RuleHandle>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+ --> src/result/mod.rs:7:5
+  |
+7 |     pub tags: Vec<String>,
+  |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+ --> src/result/mod.rs:9:5
+  |
+9 |     pub id: String,
+  |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/result/mod.rs:10:5
+   |
+10 |     pub title: String,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/result/mod.rs:11:5
+   |
+11 |     pub description: String,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src/consumer/backpressure.rs:558:13
+    |
+558 |         let mut controller = AdaptiveBackpressureController::new(
+    |             ----^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: missing documentation for an associated function
+   --> src/consumer/mod.rs:102:5
+    |
+102 |     pub fn new(engine: Arc<SigmaEngine>) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/consumer/config.rs:45:5
+   |
+45 |     pub dlq_after_retries: u32,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/consumer/config.rs:49:5
+   |
+49 |     pub max_inflight_messages: usize,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/consumer/config.rs:50:5
+   |
+50 |     pub pause_threshold: f64,  // Pause when buffer is this % full
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/consumer/config.rs:51:5
+   |
+51 |     pub resume_threshold: f64, // Resume when buffer drops to this %
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src/consumer/config.rs:55:5
+   |
+55 |     pub enable_detailed_metrics: bool,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> src/consumer/config.rs:119:5
+    |
+119 |     pub fn session_timeout_ms(mut self, timeout: u32) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a method
+   --> src/consumer/config.rs:124:5
+    |
+124 |     pub fn enable_auto_commit(mut self, enable: bool) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for an associated function
+   --> src/consumer/processor.rs:125:5
+    |
+125 |     pub fn new(processor: P, metrics: crate::consumer::metrics::ConsumerMetrics) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/metrics.rs:417:5
+    |
+417 |     pub count: usize,
+    |     ^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/metrics.rs:418:5
+    |
+418 |     pub p50: Duration,
+    |     ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/metrics.rs:419:5
+    |
+419 |     pub p95: Duration,
+    |     ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/metrics.rs:420:5
+    |
+420 |     pub p99: Duration,
+    |     ^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/metrics.rs:421:5
+    |
+421 |     pub mean: Duration,
+    |     ^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/backpressure.rs:393:5
+    |
+393 |     pub initial_inflight: usize,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/backpressure.rs:394:5
+    |
+394 |     pub min_inflight: usize,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/backpressure.rs:395:5
+    |
+395 |     pub max_inflight: usize,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/backpressure.rs:396:5
+    |
+396 |     pub pause_threshold: f64,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/backpressure.rs:397:5
+    |
+397 |     pub resume_threshold: f64,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/backpressure.rs:398:5
+    |
+398 |     pub adjustment_interval: Duration,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/backpressure.rs:399:5
+    |
+399 |     pub target_latency: Duration,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/backpressure.rs:400:5
+    |
+400 |     pub target_success_rate: f64,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/retry.rs:107:15
+    |
+107 |     Success { value: T, attempts: u32 },
+    |               ^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/retry.rs:107:25
+    |
+107 |     Success { value: T, attempts: u32 },
+    |                         ^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/retry.rs:109:14
+    |
+109 |     Failed { error: E, attempts: u32 },
+    |              ^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> src/consumer/retry.rs:109:24
+    |
+109 |     Failed { error: E, attempts: u32 },
+    |                        ^^^^^^^^^^^^^
+
+warning: comparison is useless due to type limits
+   --> src/consumer/backpressure.rs:585:17
+    |
+585 |         assert!(controller.base_controller.inflight_count() >= 0);
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_comparisons)]` on by default
+
+warning: `sigma-rs` (lib) generated 167 warnings
+warning: unused variable: `test_case`
+   --> src/bin/test_runner.rs:118:13
+    |
+118 |     for (i, test_case) in test_cases.iter().enumerate() {
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_test_case`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused import: `Event`
+ --> examples/simple_detection.rs:3:30
+  |
+3 | use sigma_rs::{DynamicEvent, Event, Keyworder, Selector};
+  |                              ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+error[E0432]: unresolved imports `sigma_rs::event::WindowsEvent`, `sigma_rs::event::SysmonEvent`, `sigma_rs::event::LinuxAuditEvent`, `sigma_rs::matcher::RuleMatcher`
+ --> tests/event_processing_test.rs:4:20
+  |
+4 |     event::{Event, WindowsEvent, SysmonEvent, LinuxAuditEvent},
+  |                    ^^^^^^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^^^^^^^^ no `LinuxAuditEvent` in `event`
+  |                    |             |
+  |                    |             no `SysmonEvent` in `event`
+  |                    no `WindowsEvent` in `event`
+5 |     rule::rule_from_yaml,
+6 |     matcher::RuleMatcher,
+  |     ^^^^^^^^^^^^^^^^^^^^ no `RuleMatcher` in `matcher`
+
+warning: unused import: `Event`
+ --> tests/event_processing_test.rs:4:13
+  |
+4 |     event::{Event, WindowsEvent, SysmonEvent, LinuxAuditEvent},
+  |             ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `std::collections::HashMap`
+  --> tests/event_processing_test.rs:10:5
+   |
+10 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0432]: unresolved import `sigma_rs::RuleSet`
+  --> examples/stream_detector.rs:17:37
+   |
+17 | use sigma_rs::{DynamicEvent, Event, RuleSet};
+   |                                     ^^^^^^^ no `RuleSet` in the root
+
+error[E0432]: unresolved import `sigma_rs::errors`
+  --> examples/stream_detector.rs:18:15
+   |
+18 | use sigma_rs::errors::Result;
+   |               ^^^^^^ could not find `errors` in `sigma_rs`
+
+error[E0432]: unresolved import `crate::rule`
+  --> examples/common/mod.rs:12:12
+   |
+12 | use crate::rule::{Rule, RuleSet};
+   |            ^^^^
+   |            |
+   |            unresolved import
+   |            help: a similar path exists: `sigma_rs::rule`
+
+error[E0432]: unresolved import `crate::errors`
+  --> examples/common/mod.rs:13:12
+   |
+13 | use crate::errors::Result;
+   |            ^^^^^^
+   |            |
+   |            unresolved import
+   |            help: a similar path exists: `tonic::metadata::errors`
+
+error[E0432]: unresolved import `sigma_rs::detection`
+ --> tests/debug_wildcard.rs:2:15
+  |
+2 | use sigma_rs::detection::Detection;
+  |               ^^^^^^^^^ could not find `detection` in `sigma_rs`
+
+error[E0433]: failed to resolve: could not find `UtcTime` in `time`
+   --> examples/common/mod.rs:171:52
+    |
+171 |         .with_timer(tracing_subscriber::fmt::time::UtcTime::rfc_3339())
+    |                                                    ^^^^^^^ could not find `UtcTime` in `time`
+    |
+note: found an item that was configured out
+   --> /Users/mikesaxton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-subscriber-0.3.19/src/fmt/time/mod.rs:13:21
+    |
+13  | pub use time_crate::UtcTime;
+    |                     ^^^^^^^
+note: the item is gated behind the `time` feature
+   --> /Users/mikesaxton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-subscriber-0.3.19/src/fmt/time/mod.rs:11:7
+    |
+11  | #[cfg(feature = "time")]
+    |       ^^^^^^^^^^^^^^^^
+
+warning: unused import: `ParseError`
+ --> tests/debug_wildcard.rs:1:32
+  |
+1 | use sigma_rs::parser::{Parser, ParseError};
+  |                                ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+error[E0432]: unresolved import `sigma_rs::detection`
+ --> tests/parser_tests.rs:1:15
+  |
+1 | use sigma_rs::detection::Detection;
+  |               ^^^^^^^^^ could not find `detection` in `sigma_rs`
+
+error[E0432]: unresolved import `sigma_rs::Rule`
+ --> tests/property_tests.rs:5:37
+  |
+5 | use sigma_rs::{Event, DynamicEvent, Rule};
+  |                                     ^^^^
+  |                                     |
+  |                                     no `Rule` in the root
+  |                                     help: a similar name exists in the module: `rule`
+  |
+  = help: consider importing this struct instead:
+          sigma_rs::rule::Rule
+
+error[E0432]: unresolved import `testcontainers::images::kafka`
+  --> tests/consumer_integration_test.rs:21:43
+   |
+21 |     use testcontainers::{clients, images::kafka::Kafka};
+   |                                           ^^^^^ could not find `kafka` in `images`
+
+error[E0432]: unresolved import `sigma_rs::pattern::string_matcher::new_string_matcher`
+ --> tests/modifier_tests.rs:4:36
+  |
+4 |     pattern::{TextPatternModifier, string_matcher::new_string_matcher},
+  |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `new_string_matcher` in `pattern::string_matcher`
+
+warning: unused import: `std::collections::HashMap`
+ --> tests/parser_tests.rs:3:5
+  |
+3 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+error[E0433]: failed to resolve: unresolved import
+   --> examples/common/mod.rs:135:28
+    |
+135 |                     crate::errors::ErrorKind::UnsupportedFeature => {
+    |                            ^^^^^^ unresolved import
+    |
+help: a similar path exists
+    |
+135 |                     crate::tonic::metadata::errors::ErrorKind::UnsupportedFeature => {
+    |                            +++++++++++++++++
+help: consider importing one of these enums
+    |
+3   + use crate::common::io::ErrorKind;
+    |
+3   + use std::io::ErrorKind;
+    |
+3   + use axum::extract::path::ErrorKind;
+    |
+3   + use clap::error::ErrorKind;
+    |
+      and 3 other candidates
+help: if you import `ErrorKind`, refer to it directly
+    |
+135 -                     crate::errors::ErrorKind::UnsupportedFeature => {
+135 +                     ErrorKind::UnsupportedFeature => {
+    |
+
+warning: unused import: `parser::Parser`
+ --> tests/modifier_tests.rs:6:5
+  |
+6 |     parser::Parser,
+  |     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `super::*`
+   --> tests/modifier_tests.rs:278:9
+    |
+278 |     use super::*;
+    |         ^^^^^^^^
+
+warning: unused import: `std::path::PathBuf`
+  --> examples/stream_detector.rs:12:5
+   |
+12 | use std::path::PathBuf;
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `BufReader`, `stdin`, and `stdout`
+  --> examples/stream_detector.rs:13:15
+   |
+13 | use std::io::{stdin, stdout, BufReader, Write};
+   |               ^^^^^  ^^^^^^  ^^^^^^^^^
+
+warning: unused import: `Deserializer`
+  --> examples/stream_detector.rs:23:18
+   |
+23 | use serde_json::{Deserializer, Value};
+   |                  ^^^^^^^^^^^^
+
+warning: unused import: `std::io`
+ --> examples/common/mod.rs:6:5
+  |
+6 | use std::io;
+  |     ^^^^^^^
+
+warning: unused import: `format_duration`
+  --> examples/stream_detector.rs:28:63
+   |
+28 |     find_rule_files, load_rules_with_progress, setup_logging, format_duration
+   |                                                               ^^^^^^^^^^^^^^^
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `option`
+   --> tests/property_tests.rs:236:24
+    |
+236 |         description in option::of("[a-zA-Z0-9 .]{1,200}"),
+    |                        ^^^^^^ use of unresolved module or unlinked crate `option`
+    |
+    = help: if you wanted to use a crate named `option`, use `cargo add option` to add it to your `Cargo.toml`
+help: an enum with a similar name exists (notice the capitalization difference)
+    |
+236 -         description in option::of("[a-zA-Z0-9 .]{1,200}"),
+236 +         description in Option::of("[a-zA-Z0-9 .]{1,200}"),
+    |
+help: consider importing one of these modules
+    |
+1   + use crate::prop::option;
+    |
+1   + use proptest::option;
+    |
+
+error[E0432]: unresolved import `sigma_rs::errors`
+  --> examples/rule_validator.rs:14:15
+   |
+14 | use sigma_rs::errors::Result;
+   |               ^^^^^^ could not find `errors` in `sigma_rs`
+
+error[E0432]: unresolved import `sigma_rs::RuleSet`
+  --> examples/parallel_stream_detector.rs:16:37
+   |
+16 | use sigma_rs::{DynamicEvent, Event, RuleSet};
+   |                                     ^^^^^^^ no `RuleSet` in the root
+
+warning: unused variable: `event`
+   --> tests/event_processing_test.rs:282:34
+    |
+282 | async fn test_event_matches_rule(event: &serde_json::Value, rule: &sigma_rs::rule::Rule) -> bool {
+    |                                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_event`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `tree`
+   --> tests/event_processing_test.rs:285:9
+    |
+285 |     let tree = parser.run().await.unwrap();
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_tree`
+
+warning: unused import: `Event`
+ --> tests/property_tests.rs:5:16
+  |
+5 | use sigma_rs::{Event, DynamicEvent, Rule};
+  |                ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `std::collections::HashMap`
+ --> tests/property_tests.rs:7:5
+  |
+7 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0432]: unresolved import `sigma_rs::errors`
+  --> examples/parallel_stream_detector.rs:17:15
+   |
+17 | use sigma_rs::errors::Result;
+   |               ^^^^^^ could not find `errors` in `sigma_rs`
+
+error[E0596]: cannot borrow `parser` as mutable, as it is not declared as mutable
+   --> tests/event_processing_test.rs:285:16
+    |
+285 |     let tree = parser.run().await.unwrap();
+    |                ^^^^^^ cannot borrow as mutable
+    |
+help: consider changing this to be mutable
+    |
+284 |     let mut parser = Parser::new(rule.detection.clone(), false);
+    |         +++
+
+error[E0432]: unresolved imports `sigma_rs::error::LexerError`, `sigma_rs::error::PatternError`, `sigma_rs::pattern::string_matcher::new_string_matcher`
+ --> tests/error_handling_test.rs:4:37
+  |
+4 |     error::{SigmaError, ParseError, LexerError, PatternError},
+  |                                     ^^^^^^^^^^  ^^^^^^^^^^^^
+  |                                     |           |
+  |                                     |           no `PatternError` in `error`
+  |                                     |           help: a similar name exists in the module: `ParseError`
+  |                                     no `LexerError` in `error`
+...
+8 |     pattern::string_matcher::new_string_matcher,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `new_string_matcher` in `pattern::string_matcher`
+  |
+  = help: consider importing this struct instead:
+          glob::PatternError
+
+error[E0603]: module `images` is private
+  --> tests/consumer_integration_test.rs:21:35
+   |
+21 |     use testcontainers::{clients, images::kafka::Kafka};
+   |                                   ^^^^^^ private module
+   |
+note: the module `images` is defined here
+  --> /Users/mikesaxton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/testcontainers-0.15.0/src/lib.rs:52:1
+   |
+52 | mod images;
+   | ^^^^^^^^^^
+
+warning: unused imports: `ConsumerConfig`, `ConsumerResult`, `dlq::DlqProducer`, `metrics::ConsumerMetrics`, `offset_manager::OffsetManager`, and `retry::RetryPolicy`
+  --> tests/consumer_integration_test.rs:4:18
+   |
+4  |         config::{ConsumerConfig, ConsumerConfigBuilder},
+   |                  ^^^^^^^^^^^^^^
+...
+7  |         error::{ConsumerError, ConsumerResult},
+   |                                ^^^^^^^^^^^^^^
+8  |         retry::RetryPolicy,
+   |         ^^^^^^^^^^^^^^^^^^
+9  |         metrics::ConsumerMetrics,
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+10 |         offset_manager::OffsetManager,
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |         dlq::DlqProducer,
+   |         ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `tokio::signal`
+  --> tests/consumer_integration_test.rs:22:9
+   |
+22 |     use tokio::signal;
+   |         ^^^^^^^^^^^^^
+
+warning: unused import: `tracing::info`
+  --> tests/consumer_integration_test.rs:23:9
+   |
+23 |     use tracing::info;
+   |         ^^^^^^^^^^^^^
+
+error[E0433]: failed to resolve: could not find `detection` in `sigma_rs`
+  --> tests/error_handling_test.rs:94:41
+   |
+94 |         let detection: Result<sigma_rs::detection::Detection, _> = 
+   |                                         ^^^^^^^^^ could not find `detection` in `sigma_rs`
+   |
+help: consider importing this module
+   |
+3  + use sigma_rs::rule::detection;
+   |
+help: if you import `detection`, refer to it directly
+   |
+94 -         let detection: Result<sigma_rs::detection::Detection, _> = 
+94 +         let detection: Result<detection::Detection, _> = 
+   |
+
+warning: unused imports: `ParseError` and `SigmaError`
+ --> tests/error_handling_test.rs:4:13
+  |
+4 |     error::{SigmaError, ParseError, LexerError, PatternError},
+  |             ^^^^^^^^^^  ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `std::path::PathBuf`
+  --> examples/parallel_stream_detector.rs:12:5
+   |
+12 | use std::path::PathBuf;
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Stream`
+  --> examples/parallel_stream_detector.rs:23:23
+   |
+23 | use futures::stream::{Stream, StreamExt};
+   |                       ^^^^^^
+
+warning: unused import: `format_duration`
+  --> examples/parallel_stream_detector.rs:28:63
+   |
+28 |     find_rule_files, load_rules_with_progress, setup_logging, format_duration
+   |                                                               ^^^^^^^^^^^^^^^
+
+warning: unused import: `std::io`
+ --> examples/common/mod.rs:6:5
+  |
+6 | use std::io;
+  |     ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+For more information about this error, try `rustc --explain E0432`.
+warning: unused import: `Rule`
+  --> examples/rule_validator.rs:92:26
+   |
+92 |     use sigma_rs::rule::{Rule, rule_from_yaml};
+   |                          ^^^^
+
+warning: unused import: `Rule`
+   --> examples/rule_validator.rs:141:26
+    |
+141 |     use sigma_rs::rule::{Rule, rule_from_yaml};
+    |                          ^^^^
+
+warning: unused variable: `expected`
+   --> tests/modifier_tests.rs:186:31
+    |
+186 |         for (name, rule_part, expected) in test_cases {
+    |                               ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_expected`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `rule`
+   --> tests/modifier_tests.rs:193:13
+    |
+193 |         let rule = r#"
+    |             ^^^^ help: if this is intentional, prefix it with an underscore: `_rule`
+
+warning: unused variable: `rule`
+   --> tests/modifier_tests.rs:209:19
+    |
+209 |         if let Ok(rule) = rule_from_yaml(rule_yaml.as_bytes()) {
+    |                   ^^^^ help: if this is intentional, prefix it with an underscore: `_rule`
+
+warning: unused variable: `field_name`
+   --> tests/modifier_tests.rs:206:45
+    |
+206 |     fn test_modifier_match(rule_yaml: &str, field_name: &str, field_value: &str) -> bool {
+    |                                             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_field_name`
+
+warning: unused variable: `field_value`
+   --> tests/modifier_tests.rs:206:63
+    |
+206 |     fn test_modifier_match(rule_yaml: &str, field_name: &str, field_value: &str) -> bool {
+    |                                                               ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_field_value`
+
+warning: unused variable: `detection`
+   --> tests/modifier_tests.rs:288:20
+    |
+288 |         for (name, detection, field, value, expected) in test_cases {
+    |                    ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_detection`
+
+warning: unused variable: `field`
+   --> tests/modifier_tests.rs:288:31
+    |
+288 |         for (name, detection, field, value, expected) in test_cases {
+    |                               ^^^^^ help: if this is intentional, prefix it with an underscore: `_field`
+
+warning: unused variable: `value`
+   --> tests/modifier_tests.rs:288:38
+    |
+288 |         for (name, detection, field, value, expected) in test_cases {
+    |                                      ^^^^^ help: if this is intentional, prefix it with an underscore: `_value`
+
+warning: unused variable: `expected`
+   --> tests/modifier_tests.rs:288:45
+    |
+288 |         for (name, detection, field, value, expected) in test_cases {
+    |                                             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_expected`
+
+warning: unused variable: `detection`
+   --> tests/modifier_tests.rs:303:20
+    |
+303 |         for (name, detection, field, value, expected) in test_cases {
+    |                    ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_detection`
+
+warning: unused variable: `field`
+   --> tests/modifier_tests.rs:303:31
+    |
+303 |         for (name, detection, field, value, expected) in test_cases {
+    |                               ^^^^^ help: if this is intentional, prefix it with an underscore: `_field`
+
+warning: unused variable: `value`
+   --> tests/modifier_tests.rs:303:38
+    |
+303 |         for (name, detection, field, value, expected) in test_cases {
+    |                                      ^^^^^ help: if this is intentional, prefix it with an underscore: `_value`
+
+warning: unused variable: `expected`
+   --> tests/modifier_tests.rs:303:45
+    |
+303 |         for (name, detection, field, value, expected) in test_cases {
+    |                                             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_expected`
+
+warning: unused variable: `detection`
+   --> tests/modifier_tests.rs:317:20
+    |
+317 |         for (name, detection, field, value, expected) in test_cases {
+    |                    ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_detection`
+
+warning: unused variable: `field`
+   --> tests/modifier_tests.rs:317:31
+    |
+317 |         for (name, detection, field, value, expected) in test_cases {
+    |                               ^^^^^ help: if this is intentional, prefix it with an underscore: `_field`
+
+warning: unused variable: `value`
+   --> tests/modifier_tests.rs:317:38
+    |
+317 |         for (name, detection, field, value, expected) in test_cases {
+    |                                      ^^^^^ help: if this is intentional, prefix it with an underscore: `_value`
+
+warning: unused variable: `expected`
+   --> tests/modifier_tests.rs:317:45
+    |
+317 |         for (name, detection, field, value, expected) in test_cases {
+    |                                             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_expected`
+
+error[E0432]: unresolved import `sigma_rs::RuleSet`
+  --> examples/event_detector.rs:16:37
+   |
+16 | use sigma_rs::{DynamicEvent, Event, RuleSet};
+   |                                     ^^^^^^^ no `RuleSet` in the root
+
+warning: `sigma-rs` (test "debug_wildcard") generated 1 warning
+error: could not compile `sigma-rs` (test "debug_wildcard") due to 1 previous error; 1 warning emitted
+warning: build failed, waiting for other jobs to finish...
+error[E0432]: unresolved import `sigma_rs::errors`
+  --> examples/event_detector.rs:17:15
+   |
+17 | use sigma_rs::errors::Result;
+   |               ^^^^^^ could not find `errors` in `sigma_rs`
+
+warning: `sigma-rs` (bin "test_runner") generated 1 warning
+warning: `sigma-rs` (test "parser_tests") generated 1 warning
+error: could not compile `sigma-rs` (test "parser_tests") due to 1 previous error; 1 warning emitted
+warning: `sigma-rs` (lib test) generated 174 warnings (167 duplicates) (run `cargo fix --lib -p sigma-rs --tests` to apply 4 suggestions)
+warning: `sigma-rs` (test "modifier_tests") generated 19 warnings
+error: could not compile `sigma-rs` (test "modifier_tests") due to 1 previous error; 19 warnings emitted
+warning: unused import: `Duration`
+  --> examples/event_detector.rs:13:26
+   |
+13 | use std::time::{Instant, Duration};
+   |                          ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Event`
+  --> examples/event_detector.rs:16:30
+   |
+16 | use sigma_rs::{DynamicEvent, Event, RuleSet};
+   |                              ^^^^^
+
+warning: unused variable: `rule_obj`
+   --> tests/event_processing_test.rs:274:9
+    |
+274 |     let rule_obj = rule_from_yaml(rule.as_bytes()).unwrap();
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rule_obj`
+
+error[E0432]: unresolved import `sigma_rs::detection`
+ --> tests/parser_debug_detailed.rs:2:15
+  |
+2 | use sigma_rs::detection::Detection;
+  |               ^^^^^^^^^ could not find `detection` in `sigma_rs`
+
+Some errors have detailed explanations: E0432, E0596.
+For more information about an error, try `rustc --explain E0432`.
+warning: unused import: `ParseError`
+ --> tests/parser_debug_detailed.rs:1:32
+  |
+1 | use sigma_rs::parser::{Parser, ParseError};
+  |                                ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: `sigma-rs` (test "event_processing_test") generated 5 warnings
+error: could not compile `sigma-rs` (test "event_processing_test") due to 2 previous errors; 5 warnings emitted
+warning: `sigma-rs` (test "parser_debug_detailed") generated 1 warning
+error: could not compile `sigma-rs` (test "parser_debug_detailed") due to 1 previous error; 1 warning emitted
+warning: `sigma-rs` (example "simple_detection") generated 1 warning (run `cargo fix --example "simple_detection"` to apply 1 suggestion)
+Some errors have detailed explanations: E0432, E0603.
+warning: `sigma-rs` (test "consumer_integration_test") generated 3 warnings
+error: could not compile `sigma-rs` (test "consumer_integration_test") due to 2 previous errors; 3 warnings emitted
+error[E0599]: no method named `select` found for struct `DynamicEvent` in the current scope
+   --> tests/property_tests.rs:108:31
+    |
+108 |         let _ = dynamic_event.select(&field);
+    |                               ^^^^^^ method not found in `DynamicEvent`
+    |
+   ::: /Users/mikesaxton/Development/sigma-rs/rust-implementation/src/event.rs:16:8
+    |
+16  |     fn select(&self, key: &str) -> (Option<Value>, bool);
+    |        ------ the method is available for `DynamicEvent` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Selector` which provides `select` is implemented but not in scope; perhaps you want to import it
+    |
+1   + use sigma_rs::Selector;
+    |
+
+error[E0599]: the method `join` exists for struct `Vec<&String>`, but its trait bounds were not satisfied
+   --> examples/parallel_stream_detector.rs:404:38
+    |
+401 | / ...                   result.matches.iter()
+402 | | ...                       .map(|m| &m.rule_name)
+403 | | ...                       .collect::<Vec<_>>()
+404 | | ...                       .join(", ")
+    | |                           -^^^^ method cannot be called on `Vec<&String>` due to unsatisfied trait bounds
+    | |___________________________|
+    |
+    |
+    = note: the following trait bounds were not satisfied:
+            `[&std::string::String]: std::slice::Join<_>`
+
+error[E0277]: the trait bound `DateTime<Utc>: Serialize` is not satisfied
+    --> examples/common/mod.rs:39:24
+     |
+39   | #[derive(Debug, Clone, Serialize, Deserialize)]
+     |                        ^^^^^^^^^ the trait `Serialize` is not implemented for `DateTime<Utc>`
+...
+43   |     pub timestamp: chrono::DateTime<chrono::Utc>,
+     |     --- required by a bound introduced by this call
+     |
+     = note: for local types consider adding `#[derive(serde::Serialize)]` to your `DateTime<Utc>` type
+     = note: for types from other crates check whether the crate offers a `serde` feature flag
+     = help: the following other types implement trait `Serialize`:
+               &'a T
+               &'a mut T
+               ()
+               (T,)
+               (T0, T1)
+               (T0, T1, T2)
+               (T0, T1, T2, T3)
+               (T0, T1, T2, T3, T4)
+             and 407 others
+note: required by a bound in `common::_::_serde::ser::SerializeStruct::serialize_field`
+    --> /Users/mikesaxton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.219/src/ser/mod.rs:1866:21
+     |
+1864 |     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
+     |        --------------- required by a bound in this associated function
+1865 |     where
+1866 |         T: ?Sized + Serialize;
+     |                     ^^^^^^^^^ required by this bound in `SerializeStruct::serialize_field`
+     = note: this error originates in the derive macro `Serialize` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: no method named `select` found for struct `DynamicEvent` in the current scope
+   --> tests/property_tests.rs:146:42
+    |
+146 |         let (_, found1) = dynamic_event1.select(&field);
+    |                                          ^^^^^^ method not found in `DynamicEvent`
+    |
+   ::: /Users/mikesaxton/Development/sigma-rs/rust-implementation/src/event.rs:16:8
+    |
+16  |     fn select(&self, key: &str) -> (Option<Value>, bool);
+    |        ------ the method is available for `DynamicEvent` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Selector` which provides `select` is implemented but not in scope; perhaps you want to import it
+    |
+1   + use sigma_rs::Selector;
+    |
+
+error[E0599]: no method named `select` found for struct `DynamicEvent` in the current scope
+   --> tests/property_tests.rs:147:42
+    |
+147 |         let (_, found2) = dynamic_event2.select(&field);
+    |                                          ^^^^^^ method not found in `DynamicEvent`
+    |
+   ::: /Users/mikesaxton/Development/sigma-rs/rust-implementation/src/event.rs:16:8
+    |
+16  |     fn select(&self, key: &str) -> (Option<Value>, bool);
+    |        ------ the method is available for `DynamicEvent` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Selector` which provides `select` is implemented but not in scope; perhaps you want to import it
+    |
+1   + use sigma_rs::Selector;
+    |
+
+error[E0277]: the trait bound `DateTime<Utc>: Deserialize<'_>` is not satisfied
+    --> examples/common/mod.rs:43:20
+     |
+43   |     pub timestamp: chrono::DateTime<chrono::Utc>,
+     |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Deserialize<'_>` is not implemented for `DateTime<Utc>`
+     |
+     = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `DateTime<Utc>` type
+     = note: for types from other crates check whether the crate offers a `serde` feature flag
+     = help: the following other types implement trait `Deserialize<'de>`:
+               &'a Path
+               &'a [u8]
+               &'a serde_json::value::RawValue
+               &'a str
+               ()
+               (T,)
+               (T0, T1)
+               (T0, T1, T2)
+             and 403 others
+note: required by a bound in `next_element`
+    --> /Users/mikesaxton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.219/src/de/mod.rs:1732:12
+     |
+1730 |     fn next_element<T>(&mut self) -> Result<Option<T>, Self::Error>
+     |        ------------ required by a bound in this associated function
+1731 |     where
+1732 |         T: Deserialize<'de>,
+     |            ^^^^^^^^^^^^^^^^ required by this bound in `SeqAccess::next_element`
+
+error[E0599]: no method named `select` found for struct `DynamicEvent` in the current scope
+   --> tests/property_tests.rs:175:45
+    |
+175 |         let (selected_value, found) = event.select(&path);
+    |                                             ^^^^^^ method not found in `DynamicEvent`
+    |
+   ::: /Users/mikesaxton/Development/sigma-rs/rust-implementation/src/event.rs:16:8
+    |
+16  |     fn select(&self, key: &str) -> (Option<Value>, bool);
+    |        ------ the method is available for `DynamicEvent` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `Selector` which provides `select` is implemented but not in scope; perhaps you want to import it
+    |
+1   + use sigma_rs::Selector;
+    |
+
+error[E0277]: the trait bound `DateTime<Utc>: Deserialize<'_>` is not satisfied
+    --> examples/common/mod.rs:43:20
+     |
+43   |     pub timestamp: chrono::DateTime<chrono::Utc>,
+     |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Deserialize<'_>` is not implemented for `DateTime<Utc>`
+     |
+     = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `DateTime<Utc>` type
+     = note: for types from other crates check whether the crate offers a `serde` feature flag
+     = help: the following other types implement trait `Deserialize<'de>`:
+               &'a Path
+               &'a [u8]
+               &'a serde_json::value::RawValue
+               &'a str
+               ()
+               (T,)
+               (T0, T1)
+               (T0, T1, T2)
+             and 403 others
+note: required by a bound in `next_value`
+    --> /Users/mikesaxton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.219/src/de/mod.rs:1871:12
+     |
+1869 |     fn next_value<V>(&mut self) -> Result<V, Self::Error>
+     |        ---------- required by a bound in this associated function
+1870 |     where
+1871 |         V: Deserialize<'de>,
+     |            ^^^^^^^^^^^^^^^^ required by this bound in `MapAccess::next_value`
+
+error[E0277]: the trait bound `DateTime<Utc>: Deserialize<'_>` is not satisfied
+  --> examples/common/mod.rs:39:35
+   |
+39 | #[derive(Debug, Clone, Serialize, Deserialize)]
+   |                                   ^^^^^^^^^^^ the trait `Deserialize<'_>` is not implemented for `DateTime<Utc>`
+   |
+   = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `DateTime<Utc>` type
+   = note: for types from other crates check whether the crate offers a `serde` feature flag
+   = help: the following other types implement trait `Deserialize<'de>`:
+             &'a Path
+             &'a [u8]
+             &'a serde_json::value::RawValue
+             &'a str
+             ()
+             (T,)
+             (T0, T1)
+             (T0, T1, T2)
+           and 403 others
+note: required by a bound in `common::_::_serde::__private::de::missing_field`
+  --> /Users/mikesaxton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.219/src/private/de.rs:25:8
+   |
+23 | pub fn missing_field<'de, V, E>(field: &'static str) -> Result<V, E>
+   |        ------------- required by a bound in this function
+24 | where
+25 |     V: Deserialize<'de>,
+   |        ^^^^^^^^^^^^^^^^ required by this bound in `missing_field`
+   = note: this error originates in the derive macro `Deserialize` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `empty_event`
+   --> tests/property_tests.rs:122:13
+    |
+122 |         let empty_event = DynamicEvent::new(json!({}));
+    |             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_empty_event`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `parsed_rule`
+   --> tests/property_tests.rs:125:19
+    |
+125 |         if let Ok(parsed_rule) = sigma_rs::rule::rule_from_yaml(rule.as_bytes()) {
+    |                   ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_parsed_rule`
+
+warning: unused variable: `rule`
+   --> tests/property_tests.rs:220:13
+    |
+220 |         let rule = format!(
+    |             ^^^^ help: if this is intentional, prefix it with an underscore: `_rule`
+
+warning: unused variable: `event_exact`
+   --> tests/property_tests.rs:226:13
+    |
+226 |         let event_exact = json!({ "field": text });
+    |             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_event_exact`
+
+warning: unused variable: `event_collapsed`
+   --> tests/property_tests.rs:227:13
+    |
+227 |         let event_collapsed = json!({ "field": text.split_whitespace().collect::<Vec<_>>().join(" ") });
+    |             ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_event_collapsed`
+
+warning: unused variable: `collapse_ws`
+   --> tests/property_tests.rs:217:9
+    |
+217 |         collapse_ws in any::<bool>()
+    |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_collapse_ws`
+
+error[E0308]: mismatched types
+  --> tests/error_handling_test.rs:22:36
+   |
+22 |         let mut lexer = Lexer::new(input);
+   |                         ---------- ^^^^^- help: try using a conversion method: `.to_string()`
+   |                         |          |
+   |                         |          expected `String`, found `&str`
+   |                         arguments to this function are incorrect
+   |
+note: associated function defined here
+  --> /Users/mikesaxton/Development/sigma-rs/rust-implementation/src/lexer/mod.rs:25:12
+   |
+25 |     pub fn new(input: String) -> (Self, mpsc::UnboundedReceiver<Item>) {
+   |            ^^^
+
+error[E0308]: mismatched types
+   --> examples/stream_detector.rs:268:36
+    |
+268 |         event: EventStruct { data: event_value.as_object().unwrap().clone() },
+    |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `HashMap<String, Value>`, found `Map<String, Value>`
+    |
+    = note: expected struct `HashMap<std::string::String, serde_json::Value>`
+               found struct `serde_json::Map<std::string::String, serde_json::Value>`
+
+warning: unused variable: `parsed_rule`
+   --> tests/property_tests.rs:283:19
+    |
+283 |         if let Ok(parsed_rule) = sigma_rs::rule::rule_from_yaml(rule.as_bytes()) {
+    |                   ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_parsed_rule`
+
+warning: unused variable: `dynamic_event`
+   --> tests/property_tests.rs:284:17
+    |
+284 |             let dynamic_event = DynamicEvent::new(event.clone());
+    |                 ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_dynamic_event`
+
+error[E0599]: the method `join` exists for struct `Vec<&String>`, but its trait bounds were not satisfied
+   --> examples/stream_detector.rs:310:22
+    |
+307 | /                 result.matches.iter()
+308 | |                     .map(|m| &m.rule_name)
+309 | |                     .collect::<Vec<_>>()
+310 | |                     .join(", ")
+    | |                     -^^^^ method cannot be called on `Vec<&String>` due to unsatisfied trait bounds
+    | |_____________________|
+    |
+    |
+    = note: the following trait bounds were not satisfied:
+            `[&std::string::String]: std::slice::Join<_>`
+
+Some errors have detailed explanations: E0432, E0433, E0599.
+error[E0599]: no method named `next_token` found for tuple `(sigma_rs::lexer::Lexer, UnboundedReceiver<Item>)` in the current scope
+  --> tests/error_handling_test.rs:25:39
+   |
+25 |         while let Some(token) = lexer.next_token() {
+   |                                       ^^^^^^^^^^ method not found in `(Lexer, UnboundedReceiver<Item>)`
+
+warning: `sigma-rs` (test "property_tests") generated 10 warnings
+error: could not compile `sigma-rs` (test "property_tests") due to 6 previous errors; 10 warnings emitted
+error[E0308]: mismatched types
+   --> tests/error_handling_test.rs:116:9
+    |
+116 |     for (pattern, modifier) in test_cases {
+    |         ^^^^^^^^^^^^^^^^^^^    ---------- this is an iterator with items of type `(&str, &str, TextPatternModifier)`
+    |         |
+    |         expected a tuple with 3 elements, found one with 2 elements
+    |
+    = note: expected tuple `(&str, &str, TextPatternModifier)`
+               found tuple `(_, _)`
+
+error[E0308]: mismatched types
+   --> tests/error_handling_test.rs:312:40
+    |
+312 |             let mut lexer = Lexer::new(input);
+    |                             ---------- ^^^^^- help: try using a conversion method: `.to_string()`
+    |                             |          |
+    |                             |          expected `String`, found `&str`
+    |                             arguments to this function are incorrect
+    |
+note: associated function defined here
+   --> /Users/mikesaxton/Development/sigma-rs/rust-implementation/src/lexer/mod.rs:25:12
+    |
+25  |     pub fn new(input: String) -> (Self, mpsc::UnboundedReceiver<Item>) {
+    |            ^^^
+
+error[E0308]: mismatched types
+   --> examples/rule_validator.rs:115:29
+    |
+114 |                         match &e {
+    |                               -- this expression has type `&serde_yaml::error::Error`
+115 |                             sigma_rs::error::SigmaError::UnsupportedToken(_) => {
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Error`, found `SigmaError`
+
+error[E0599]: no method named `next_token` found for tuple `(sigma_rs::lexer::Lexer, UnboundedReceiver<Item>)` in the current scope
+   --> tests/error_handling_test.rs:313:39
+    |
+313 |             while let Some(_) = lexer.next_token() {
+    |                                       ^^^^^^^^^^ method not found in `(Lexer, UnboundedReceiver<Item>)`
+
+warning: unused variable: `field_spec`
+   --> tests/error_handling_test.rs:260:16
+    |
+260 |     for (name, field_spec) in test_cases {
+    |                ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_field_spec`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+error[E0308]: mismatched types
+   --> examples/event_detector.rs:194:36
+    |
+194 |         event: EventStruct { data: event_value.as_object().unwrap().clone() },
+    |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `HashMap<String, Value>`, found `Map<String, Value>`
+    |
+    = note: expected struct `HashMap<std::string::String, serde_json::Value>`
+               found struct `serde_json::Map<std::string::String, serde_json::Value>`
+
+error[E0308]: `match` arms have incompatible types
+   --> examples/rule_validator.rs:156:23
+    |
+154 |           let result = match std::fs::read_to_string(file) {
+    |  ______________________-
+155 | |             Ok(content) => rule_from_yaml(content.as_bytes()),
+    | |                            ---------------------------------- this is found to be of type `std::result::Result<Rule, serde_yaml::error::Error>`
+156 | |             Err(e) => Err(sigma_rs::error::SigmaError::Io(e)),
+    | |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Result<Rule, Error>`, found `Result<_, SigmaError>`
+157 | |         };
+    | |_________- `match` arms have incompatible types
+    |
+    = note: expected enum `std::result::Result<Rule, serde_yaml::error::Error>`
+               found enum `std::result::Result<_, SigmaError>`
+
+Some errors have detailed explanations: E0308, E0432, E0433, E0599.
+For more information about an error, try `rustc --explain E0308`.
+error[E0277]: the trait bound `&Box<dyn std::io::Write>: std::io::Write` is not satisfied
+    --> examples/event_detector.rs:215:35
+     |
+215  |             serde_json::to_writer(&writer, &result)?;
+     |             --------------------- ^^^^^^^ the trait `std::io::Write` is not implemented for `&Box<dyn std::io::Write>`
+     |             |
+     |             required by a bound introduced by this call
+     |
+note: required by a bound in `to_writer`
+    --> /Users/mikesaxton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.140/src/ser.rs:2171:8
+     |
+2169 | pub fn to_writer<W, T>(writer: W, value: &T) -> Result<()>
+     |        --------- required by a bound in this function
+2170 | where
+2171 |     W: io::Write,
+     |        ^^^^^^^^^ required by this bound in `to_writer`
+help: consider removing the leading `&`-reference
+     |
+215  -             serde_json::to_writer(&writer, &result)?;
+215  +             serde_json::to_writer(writer, &result)?;
+     |
+help: consider changing this borrow's mutability
+     |
+215  |             serde_json::to_writer(&mut writer, &result)?;
+     |                                    +++
+
+warning: `sigma-rs` (test "error_handling_test") generated 2 warnings
+error: could not compile `sigma-rs` (test "error_handling_test") due to 7 previous errors; 2 warnings emitted
+error[E0308]: mismatched types
+   --> examples/parallel_stream_detector.rs:319:47
+    |
+319 | ...                   data: event_value.as_object().unwrap().clone() 
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `HashMap<String, Value>`, found `Map<String, Value>`
+    |
+    = note: expected struct `HashMap<std::string::String, serde_json::Value>`
+               found struct `serde_json::Map<std::string::String, serde_json::Value>`
+
+warning: unused import: `StreamExt`
+  --> examples/parallel_stream_detector.rs:23:31
+   |
+23 | use futures::stream::{Stream, StreamExt};
+   |                               ^^^^^^^^^
+
+warning: unused import: `Event`
+  --> examples/parallel_stream_detector.rs:16:30
+   |
+16 | use sigma_rs::{DynamicEvent, Event, RuleSet};
+   |                              ^^^^^
+
+Some errors have detailed explanations: E0277, E0308, E0432, E0433.
+For more information about an error, try `rustc --explain E0277`.
+warning: `sigma-rs` (example "rule_validator") generated 3 warnings
+error: could not compile `sigma-rs` (example "rule_validator") due to 11 previous errors; 3 warnings emitted
+warning: `sigma-rs` (example "event_detector") generated 3 warnings (1 duplicate)
+error: could not compile `sigma-rs` (example "event_detector") due to 12 previous errors; 3 warnings emitted
+warning: unused import: `Event`
+  --> examples/stream_detector.rs:17:30
+   |
+17 | use sigma_rs::{DynamicEvent, Event, RuleSet};
+   |                              ^^^^^
+
+warning: unused import: `Write`
+  --> examples/stream_detector.rs:13:41
+   |
+13 | use std::io::{stdin, stdout, BufReader, Write};
+   |                                         ^^^^^
+
+Some errors have detailed explanations: E0277, E0308, E0432, E0433, E0599.
+warning: `sigma-rs` (example "stream_detector") generated 7 warnings
+error: could not compile `sigma-rs` (example "stream_detector") due to 12 previous errors; 7 warnings emitted
+warning: `sigma-rs` (example "parallel_stream_detector") generated 6 warnings (1 duplicate)
+error: could not compile `sigma-rs` (example "parallel_stream_detector") due to 12 previous errors; 6 warnings emitted

@@ -22,10 +22,7 @@ pub fn valid_token_sequence(t1: Token, t2: Token) -> bool {
             | Token::KeywordNot => true,
             _ => is_begin_token(t1),
         },
-        Token::IdentifierAll => match t1 {
-            Token::StmtAllOf | Token::StmtOneOf => true,
-            _ => false,
-        },
+        Token::IdentifierAll => matches!(t1, Token::StmtAllOf | Token::StmtOneOf),
         Token::Identifier | Token::IdentifierWithWildcard => match t1 {
             Token::SepLpar
             | Token::KeywordAnd
@@ -35,13 +32,12 @@ pub fn valid_token_sequence(t1: Token, t2: Token) -> bool {
             | Token::StmtAllOf => true,
             _ => is_begin_token(t1),
         },
-        Token::KeywordAnd | Token::KeywordOr => match t1 {
+        Token::KeywordAnd | Token::KeywordOr => matches!(t1,
             Token::Identifier
             | Token::IdentifierAll
             | Token::IdentifierWithWildcard
-            | Token::SepRpar => true,
-            _ => false,
-        },
+            | Token::SepRpar
+        ),
         Token::KeywordNot => match t1 {
             Token::KeywordAnd
             | Token::KeywordOr
@@ -55,35 +51,32 @@ pub fn valid_token_sequence(t1: Token, t2: Token) -> bool {
             | Token::SepLpar => true,
             _ => is_begin_token(t1),
         },
-        Token::SepRpar => match t1 {
+        Token::SepRpar => matches!(t1,
             Token::Identifier
             | Token::IdentifierAll
             | Token::IdentifierWithWildcard
             | Token::SepLpar
-            | Token::SepRpar => true,
-            _ => false,
-        },
-        Token::LitEof => match t1 {
+            | Token::SepRpar
+        ),
+        Token::LitEof => matches!(t1,
             Token::Identifier
             | Token::IdentifierAll
             | Token::IdentifierWithWildcard
-            | Token::SepRpar => true,
-            _ => false,
-        },
-        Token::SepPipe => match t1 {
+            | Token::SepRpar
+        ),
+        Token::SepPipe => matches!(t1,
             Token::Identifier
             | Token::IdentifierAll
             | Token::IdentifierWithWildcard
-            | Token::SepRpar => true,
-            _ => false,
-        },
+            | Token::SepRpar
+        ),
         _ => false,
     }
 }
 
 /// Check if a token represents the begin state
 /// We use Identifier with value "<begin>" as placeholder
-fn is_begin_token(token: Token) -> bool {
+fn is_begin_token(_token: Token) -> bool {
     // In practice we check this through the Item's value
     false // This will be checked in the parser
 }

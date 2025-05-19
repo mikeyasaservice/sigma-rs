@@ -7,7 +7,7 @@ use crate::consumer::{
     metrics::ConsumerMetrics,
     offset_manager::{OffsetManager, CommitStrategy},
     backpressure::BackpressureController,
-    retry::{RetryPolicy, RetryExecutor, RetryResult},
+    retry::{RetryExecutor, RetryResult},
     dlq::DlqProducer,
     shutdown::ShutdownState,
 };
@@ -22,7 +22,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 /// Main Redpanda consumer
 pub struct RedpandaConsumer<P: MessageProcessor> {
@@ -32,7 +32,7 @@ pub struct RedpandaConsumer<P: MessageProcessor> {
     offset_manager: Arc<OffsetManager>,
     metrics: Arc<ConsumerMetrics>,
     backpressure: Arc<BackpressureController>,
-    commit_strategy: CommitStrategy,
+    _commit_strategy: CommitStrategy,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
     dlq_producer: Option<Arc<DlqProducer>>,
@@ -123,7 +123,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             offset_manager,
             metrics,
             backpressure,
-            commit_strategy,
+            _commit_strategy: commit_strategy,
             shutdown_tx,
             shutdown_rx,
             dlq_producer,
@@ -136,7 +136,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         info!("Starting Redpanda consumer");
         
         // Create processing channel
-        let (task_tx, mut task_rx) = mpsc::channel::<ProcessingTask>(self.config.channel_buffer_size);
+        let (task_tx, task_rx) = mpsc::channel::<ProcessingTask>(self.config.channel_buffer_size);
         
         // Start background tasks
         let mut handles = vec![];

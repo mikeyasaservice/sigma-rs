@@ -1,5 +1,4 @@
 /// Core traits for event processing in the Sigma rule engine
-use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 
@@ -27,20 +26,29 @@ pub trait Event: Keyworder + Selector + Send + Sync {
 }
 
 /// Value type that can be returned from selection
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(untagged)]
 pub enum Value {
+    /// String value
     String(String),
+    /// Integer value
     Integer(i64),
+    /// Floating point value
     Float(f64),
+    /// Boolean value
     Boolean(bool),
+    /// Array of values
     Array(Vec<Value>),
+    /// Object mapping keys to values
     Object(std::collections::HashMap<String, Value>),
+    /// Null value
+    #[default]
     Null,
 }
 
 /// Module with event adapter for AST
 pub mod adapter;
+
 
 impl Value {
     /// Convert value to string if possible
@@ -86,6 +94,7 @@ pub struct DynamicEvent {
 }
 
 impl DynamicEvent {
+    /// Create a new dynamic event with the given data
     pub fn new(data: serde_json::Value) -> Self {
         let id = uuid::Uuid::new_v4().to_string();
         let timestamp = chrono::Utc::now().timestamp();
@@ -136,7 +145,7 @@ impl Selector for DynamicEvent {
             serde_json::Value::Null => Value::Null,
             serde_json::Value::Array(arr) => {
                 let values: Vec<Value> = arr.iter()
-                    .map(|v| Self::json_to_value(v))
+                    .map(Self::json_to_value)
                     .collect();
                 Value::Array(values)
             },
@@ -179,7 +188,7 @@ impl DynamicEvent {
             serde_json::Value::Null => Value::Null,
             serde_json::Value::Array(arr) => {
                 let values: Vec<Value> = arr.iter()
-                    .map(|v| Self::json_to_value(v))
+                    .map(Self::json_to_value)
                     .collect();
                 Value::Array(values)
             },
@@ -194,7 +203,6 @@ impl DynamicEvent {
 }
 
 /// Event trait for async processing
-#[async_trait]
 pub trait AsyncEvent: Event {
     /// Async version of keywords for events that need async processing
     async fn keywords_async(&self) -> Result<(Vec<String>, bool)> {
@@ -213,12 +221,14 @@ pub struct EventBuilder {
 }
 
 impl EventBuilder {
+    /// Create a new event builder
     pub fn new() -> Self {
         Self {
             data: serde_json::Value::Object(serde_json::Map::new()),
         }
     }
     
+    /// Add a field to the event
     pub fn with_field(mut self, key: &str, value: serde_json::Value) -> Self {
         if let serde_json::Value::Object(ref mut map) = self.data {
             map.insert(key.to_string(), value);
@@ -226,8 +236,15 @@ impl EventBuilder {
         self
     }
     
+    /// Build the dynamic event
     pub fn build(self) -> DynamicEvent {
         DynamicEvent::new(self.data)
+    }
+}
+
+impl Default for EventBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -1,4 +1,4 @@
-use sigma_rs::detection::Detection;
+use sigma_rs::rule::Detection;
 use sigma_rs::parser::{Parser, ParseError};
 use std::collections::HashMap;
 use serde_json::json;

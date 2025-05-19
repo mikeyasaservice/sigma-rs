@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
 use crate::ast::Branch;
-use crate::core::Event;
-use crate::result::Result;
 use crate::rule::RuleHandle;
 
 pub mod builder;
@@ -47,14 +45,14 @@ impl Tree {
             return (Some(result), true);
         }
         
-        (None, false)
+        (None, applicable)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{FieldRule, FieldPattern};
+    use crate::ast::{FieldRule, FieldPattern, Event as AstEvent};
     use crate::ast::nodes::Identifier;
     use crate::event::adapter::SimpleEvent;
     use crate::rule::{Rule, Detection, Logsource};
@@ -87,7 +85,14 @@ mod tests {
         // Create a simple field rule that matches EventID=1
         let field_rule = FieldRule::new(
             "EventID".to_string(),
-            FieldPattern::Exact("1".to_string()),
+            FieldPattern::String {
+                matcher: Arc::new(crate::pattern::string_matcher::ContentPattern {
+                    token: "1".to_string(),
+                    lowercase: false,
+                    no_collapse_ws: false,
+                }),
+                pattern_desc: "1".to_string(),
+            }
         );
         let identifier = Arc::new(Identifier::from_rule(field_rule));
         
@@ -114,6 +119,7 @@ mod tests {
         }));
         
         let (result, applicable) = tree.eval(&event).await;
+        // When the field exists but value doesn't match, applicable is true but result is None
         assert!(applicable);
         assert!(result.is_none());
     }

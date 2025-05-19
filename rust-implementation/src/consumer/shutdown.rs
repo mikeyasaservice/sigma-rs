@@ -111,6 +111,12 @@ impl ShutdownState {
     }
 }
 
+impl Default for ShutdownState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Graceful shutdown coordinator
 pub struct ShutdownCoordinator {
     /// Shutdown state

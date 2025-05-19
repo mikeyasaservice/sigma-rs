@@ -7,6 +7,44 @@
 //! - Backpressure control
 //! - Comprehensive metrics
 //! - Graceful shutdown
+//!
+//! # Example
+//!
+//! ```no_run
+//! use sigma_rs::consumer::{ConsumerConfig, create_sigma_consumer, MessageProcessor};
+//! use sigma_rs::{SigmaEngine, DynamicEvent};
+//! use async_trait::async_trait;
+//! use std::sync::Arc;
+//!
+//! struct SigmaProcessor {
+//!     engine: Arc<SigmaEngine>,
+//! }
+//!
+//! #[async_trait]
+//! impl MessageProcessor for SigmaProcessor {
+//!     async fn process_message(&self, event: DynamicEvent) -> anyhow::Result<()> {
+//!         // Process the event
+//!         self.engine.process_event(event).await?;
+//!         Ok(())
+//!     }
+//! }
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! let config = ConsumerConfig::builder()
+//!     .brokers("localhost:9092".to_string())
+//!     .group_id("sigma-consumer".to_string())
+//!     .topics(vec!["security-events".to_string()])
+//!     .batch_size(100)
+//!     .build();
+//!
+//! let engine = Arc::new(SigmaEngine::new());
+//! let processor = Arc::new(SigmaProcessor { engine });
+//!
+//! let consumer = create_sigma_consumer(processor, config).await?;
+//! consumer.run().await?;
+//! # Ok(())
+//! # }
+//! ```
 
 pub mod config;
 pub mod consumer;

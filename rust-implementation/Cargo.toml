@@ -48,11 +48,17 @@ arc-swap = "1.6"
 parking_lot = "0.12"
 num_cpus = "1.16"
 uuid = { version = "1.6", features = ["v4"] }
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
 walkdir = "2.5"
 globset = "0.4"
 lazy_static = "1.4"
 rand = "0.8"
+
+# CLI/Examples dependencies
+clap = { version = "4.5", features = ["derive", "env"] }
+indicatif = "0.17"
+rayon = "1.8"
+colored = "2.1"
 
 [build-dependencies]
 tonic-build = "0.11"
@@ -94,6 +100,10 @@ debug = true
 name = "sigma-engine"
 path = "src/bin/engine.rs"
 
+[[bin]]
+name = "test_runner"
+path = "src/bin/test_runner.rs"
+
 [[bench]]
 name = "rule_matching"
 harness = false
@@ -106,6 +116,30 @@ harness = false
 name = "sigma_benchmarks"
 harness = false
 
+[[bench]]
+name = "simplified_benchmarks"
+harness = false
+
+[[bench]]
+name = "basic_bench"
+harness = false
+
 [[example]]
 name = "simple_detection"
 path = "examples/simple_detection.rs"
+
+[[example]]
+name = "rule_validator"
+path = "examples/rule_validator.rs"
+
+[[example]]
+name = "event_detector"
+path = "examples/event_detector.rs"
+
+[[example]]
+name = "stream_detector"
+path = "examples/stream_detector.rs"
+
+[[example]]
+name = "parallel_stream_detector"
+path = "examples/parallel_stream_detector.rs"

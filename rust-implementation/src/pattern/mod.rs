@@ -1,6 +1,5 @@
 //! Pattern matching implementations for Sigma rules
 
-use std::sync::Arc;
 
 pub mod factory;
 pub mod num_matcher;

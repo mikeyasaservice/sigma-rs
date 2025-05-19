@@ -21,6 +21,7 @@ mod tests {
     use tracing::{info, error};
     
     // Test processor that counts messages
+    #[derive(Clone)]
     struct CountingProcessor {
         success_count: Arc<AtomicU32>,
         failure_count: Arc<AtomicU32>,
@@ -106,13 +107,13 @@ mod tests {
             .max_inflight_messages(10)
             .retry_policy(RetryPolicy {
                 max_retries: 2,
-                initial_delay: Duration::from_millis(100),
-                max_delay: Duration::from_secs(1),
-                exponential_backoff: true,
-                jitter: true,
+                initial_backoff: Duration::from_millis(100),
+                max_backoff: Duration::from_secs(1),
+                backoff_multiplier: 2.0,
+                jitter_factor: 0.1,
+                exponential: true,
             })
             .dlq_topic("test-dlq".to_string())
-            .dlq_after_retries(2)
             .build();
         
         // Create consumer
@@ -216,6 +217,7 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(5)).await;
         
         // High-performance processor
+        #[derive(Clone)]
         struct FastProcessor;
         
         #[async_trait]

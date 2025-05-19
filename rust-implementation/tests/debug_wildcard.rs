@@ -1,5 +1,5 @@
 use sigma_rs::parser::{Parser, ParseError};
-use sigma_rs::detection::Detection;
+use sigma_rs::rule::Detection;
 use serde_json::json;
 
 #[tokio::test]

@@ -19,7 +19,7 @@ pub struct OffsetManager {
     /// Batch size for offset commits
     batch_size: usize,
     /// Maximum time between commits
-    commit_interval: std::time::Duration,
+    _commit_interval: std::time::Duration,
 }
 
 impl OffsetManager {
@@ -29,7 +29,7 @@ impl OffsetManager {
             pending_offsets: Arc::new(Mutex::new(HashMap::new())),
             committed_offsets: Arc::new(Mutex::new(HashMap::new())),
             batch_size,
-            commit_interval,
+            _commit_interval: commit_interval,
         }
     }
     

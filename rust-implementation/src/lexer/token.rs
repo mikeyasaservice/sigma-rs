@@ -1,5 +1,4 @@
-use std::borrow::Cow;
-use glob::{Pattern, PatternError};
+use glob::Pattern;
 
 /// Token types in Sigma expressions
 #[repr(u8)]
@@ -170,7 +169,7 @@ pub fn check_keyword(input: &str) -> Token {
 
 /// Rerun the state machine
 /// Takes a channel receiver and emits tokens on the given channel
-pub fn emit(to: &Sender<Item>, token: Token, val: String) -> Result<(), Box<dyn std::error::Error>> {
+pub fn emit(_to: &Sender<Item>, _token: Token, _val: String) -> Result<(), Box<dyn std::error::Error>> {
     // Placeholder for the emit function
     Ok(())
 }

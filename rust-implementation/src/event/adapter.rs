@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::event::{Event, Value, Keyworder, Selector};
+use crate::event::{Event, Value};
 use serde_json;
 
 /// Adapter to bridge our Event trait to AST's Event trait
@@ -8,12 +8,13 @@ pub struct AstEventAdapter<'a> {
 }
 
 impl<'a> AstEventAdapter<'a> {
+    /// Create a new AST event adapter
     pub fn new(event: &'a dyn Event) -> Self {
         Self { event }
     }
 }
 
-impl<'a> ast::Event for AstEventAdapter<'a> {
+impl ast::Event for AstEventAdapter<'_> {
     fn keywords(&self) -> Vec<String> {
         let (keywords, _) = self.event.keywords();
         keywords
@@ -21,7 +22,7 @@ impl<'a> ast::Event for AstEventAdapter<'a> {
     
     fn select(&self, key: &str) -> Option<serde_json::Value> {
         let (value_opt, _) = self.event.select(key);
-        value_opt.map(|v| value_to_json(v))
+        value_opt.map(value_to_json)
     }
 }
 
@@ -52,6 +53,7 @@ pub struct SimpleEvent {
 }
 
 impl SimpleEvent {
+    /// Create a new simple event
     pub fn new(data: serde_json::Value) -> Self {
         Self { data }
     }

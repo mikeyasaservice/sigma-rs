@@ -110,19 +110,6 @@ impl Lexer {
         Ok(())
     }
 
-    /// Emit an error token
-    async fn error(&mut self, msg: String) -> Result<Option<LexState>, LexError> {
-        let item = Item::new(Token::Error, msg);
-        self.items_tx.send(item).map_err(|_| LexError::ChannelClosed)?;
-        Ok(None)
-    }
-
-    /// Emit an unsupported token
-    async fn unsupported(&mut self, msg: String) -> Result<Option<LexState>, LexError> {
-        let item = Item::new(Token::Unsupported, msg);
-        self.items_tx.send(item).map_err(|_| LexError::ChannelClosed)?;
-        Ok(None)
-    }
 }
 
 #[cfg(test)]

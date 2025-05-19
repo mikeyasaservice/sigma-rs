@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use globset::GlobBuilder;
 
-use crate::ast::{Branch, nodes::{NodeAnd, NodeOr, NodeNot, NodeSimpleAnd, NodeSimpleOr, Identifier}, FieldRule, FieldPattern};
+use crate::ast::{Branch, nodes::{NodeAnd, NodeOr, NodeNot, NodeSimpleAnd, NodeSimpleOr, Identifier}};
 use crate::pattern::IdentifierType;
 use crate::lexer::{Token, Item};
 use crate::parser::{Parser, ParseError};
@@ -10,7 +10,7 @@ use crate::tree::Tree;
 
 /// Build a new Tree from a RuleHandle
 pub async fn build_tree(rule: RuleHandle) -> Result<Tree, ParseError> {
-    let condition = rule.rule.detection.condition()
+    let _condition = rule.rule.detection.condition()
         .ok_or_else(|| ParseError::MissingCondition)?;
     
     // Create parser with detection
@@ -184,11 +184,11 @@ enum BranchType {
 
 fn reduce_branches(mut branches: Vec<Arc<dyn Branch>>, branch_type: BranchType) -> Arc<dyn Branch> {
     match branches.len() {
-        0 => panic!("Cannot reduce empty branch list"),
-        1 => branches.pop().unwrap(),
+        0 => unreachable!("reduce_branches called with empty branch list"),
+        1 => branches.pop().expect("branches should have exactly 1 element"),
         2 => {
-            let right = branches.pop().unwrap();
-            let left = branches.pop().unwrap();
+            let right = branches.pop().expect("branches should have at least 2 elements");
+            let left = branches.pop().expect("branches should have at least 1 element");
             match branch_type {
                 BranchType::And => Arc::new(NodeAnd::new(left, right)),
                 BranchType::Or => Arc::new(NodeOr::new(left, right)),
@@ -207,7 +207,7 @@ fn extract_group(iter: &mut std::iter::Peekable<std::vec::IntoIter<Item>>) -> Re
     let mut group = Vec::new();
     let mut balance = 1;
     
-    while let Some(item) = iter.next() {
+    for item in iter {
         if balance > 0 {
             group.push(item.clone());
         }
@@ -248,14 +248,13 @@ fn extract_wildcard_idents(
     glob: &globset::GlobMatcher,
     no_collapse_ws: bool,
 ) -> Result<Vec<Arc<dyn Branch>>, ParseError> {
-    let mut rules = Vec::new();
+    let rules: Result<Vec<_>, _> = detection
+        .iter()
+        .filter(|(key, _)| glob.is_match(key))
+        .map(|(_, value)| build_rule_from_ident(value, IdentifierType::Selection, no_collapse_ws))
+        .collect();
     
-    for (key, value) in detection.iter() {
-        if glob.is_match(key) {
-            let branch = build_rule_from_ident(value, IdentifierType::Selection, no_collapse_ws)?;
-            rules.push(branch);
-        }
-    }
+    let rules = rules?;
     
     if rules.is_empty() {
         return Err(ParseError::NoMatchingWildcard);

@@ -1,11 +1,10 @@
 //! Comprehensive error handling tests
 
 use sigma_rs::{
-    error::{SigmaError, ParseError, LexerError, PatternError},
-    rule::rule_from_yaml,
+    error::SigmaError,
+    rule::{rule_from_yaml, Detection},
     parser::Parser,
     lexer::Lexer,
-    pattern::string_matcher::new_string_matcher,
 };
 use std::error::Error;
 
@@ -19,10 +18,10 @@ fn test_lexer_errors() {
     ];
     
     for (name, input) in test_cases {
-        let mut lexer = Lexer::new(input);
+        let (mut lexer, mut rx) = Lexer::new(input.to_string());
         let mut has_error = false;
         
-        while let Some(token) = lexer.next_token() {
+        while let Some(token) = rx.recv().await {
             if token.is_err() {
                 has_error = true;
                 break;
@@ -91,7 +90,7 @@ async fn test_detection_parsing_errors() {
     ];
     
     for (name, json) in test_cases {
-        let detection: Result<sigma_rs::detection::Detection, _> = 
+        let detection: Result<sigma_rs::rule::Detection, _> = 
             serde_json::from_str(json);
         
         if let Ok(det) = detection {
@@ -309,10 +308,13 @@ mod panic_safety {
             // Should not panic, only return errors
             let _ = rule_from_yaml(input.as_bytes());
             
-            let mut lexer = Lexer::new(input);
-            while let Some(_) = lexer.next_token() {
-                // Process all tokens
-            }
+            let (mut lexer, mut rx) = Lexer::new(input.to_string());
+            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                lexer.tokenize().await.ok();
+                while let Ok(token) = rx.try_recv() {
+                    // Process all tokens
+                }
+            });
         }
     }
     

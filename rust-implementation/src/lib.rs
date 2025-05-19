@@ -3,10 +3,62 @@
 //! This library provides a complete implementation of the Sigma rule specification
 //! with support for real-time event processing, Redpanda integration, and
 //! comprehensive performance optimizations.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use sigma_rs::{DynamicEvent, rule};
+//! use serde_json::json;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! // Parse a Sigma rule
+//! let rule = rule::rule_from_yaml(include_bytes!("../../../examples/rules/process_creation.yml"))?;
+//!
+//! // Create an event
+//! let event = DynamicEvent::new(json!({
+//!     "EventID": 1,
+//!     "CommandLine": "powershell.exe -Command Get-Process"
+//! }));
+//!
+//! // Build the detection tree
+//! let tree = sigma_rs::tree::Tree::from_rule(&rule).await?;
+//!
+//! // Check if the event matches
+//! let matches = tree.matches(&event).await?;
+//! println!("Event matches: {}", matches.matched);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Redpanda Integration
+//!
+//! ```no_run
+//! use sigma_rs::{SigmaEngineBuilder, KafkaConfig};
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! let kafka_config = KafkaConfig {
+//!     brokers: "localhost:9092".to_string(),
+//!     group_id: "sigma-processor".to_string(),
+//!     topics: vec!["security-events".to_string()],
+//!     ..Default::default()
+//! };
+//!
+//! let engine = SigmaEngineBuilder::new()
+//!     .add_rule_dir("/path/to/rules")
+//!     .with_kafka(kafka_config)
+//!     .build()
+//!     .await?;
+//!
+//! engine.run().await?;
+//! # Ok(())
+//! # }
+//! ```
 
 #![warn(missing_docs)]
 #![deny(unsafe_code)]
 #![warn(clippy::all)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::module_inception)]
 
 // Re-export commonly used items
 pub use event::{Event, Keyworder, Selector, Value, DynamicEvent};
@@ -106,6 +158,22 @@ pub struct KafkaConfig {
     pub enable_metrics: bool,
 }
 
+impl Default for KafkaConfig {
+    fn default() -> Self {
+        Self {
+            brokers: "localhost:9092".to_string(),
+            group_id: "sigma-consumer".to_string(),
+            topics: vec!["events".to_string()],
+            properties: std::collections::HashMap::new(),
+            batch_size: Some(1000),
+            max_retries: Some(3),
+            dlq_topic: None,
+            backpressure_buffer_size: Some(10000),
+            enable_metrics: true,
+        }
+    }
+}
+
 impl Default for SigmaEngineBuilder {
     fn default() -> Self {
         Self {
@@ -181,6 +249,11 @@ mod tests {
             group_id: "sigma-test".to_string(),
             topics: vec!["events".to_string()],
             properties: std::collections::HashMap::new(),
+            batch_size: Some(100),
+            max_retries: Some(3),
+            dlq_topic: Some("dlq-events".to_string()),
+            backpressure_buffer_size: Some(1000),
+            enable_metrics: true,
         };
         
         let builder = SigmaEngineBuilder::new()

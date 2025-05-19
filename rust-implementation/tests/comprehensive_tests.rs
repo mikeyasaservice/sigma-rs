@@ -1,9 +1,10 @@
 /// Comprehensive test suite for Sigma rule engine
 /// This module implements the testing strategy outlined in TESTING_STRATEGY.md
 
-use sigma_rs::{DynamicEvent, Event, Rule, Ruleset, Pattern};
+use sigma_rs::{DynamicEvent, Selector};
+use sigma_rs::rule::Rule;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use serde_json::json;
 use anyhow::Result;
 

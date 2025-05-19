@@ -269,7 +269,7 @@ where
     let mut group = Vec::new();
     let mut balance = 1;
 
-    while let Some(item) = iter.next() {
+    for item in iter {
         if balance > 0 {
             group.push(item.clone());
         }
