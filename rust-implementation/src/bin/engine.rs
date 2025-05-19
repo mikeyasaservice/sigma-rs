@@ -31,6 +31,11 @@ async fn main() -> anyhow::Result<()> {
                 .map(|s| s.to_string())
                 .collect(),
             properties: std::collections::HashMap::new(),
+            batch_size: None,
+            max_retries: None,
+            dlq_topic: None,
+            backpressure_buffer_size: None,
+            enable_metrics: true,
         };
         builder = builder.with_kafka(kafka_config);
     }

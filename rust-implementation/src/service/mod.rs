@@ -158,62 +158,46 @@ impl SigmaService {
         if let Some(kafka_config) = builder.kafka_config {
             info!("Starting Kafka consumer for topics: {:?}", kafka_config.topics);
             
-            // Create Kafka consumer
-            use rdkafka::consumer::{StreamConsumer, Consumer};
-            use rdkafka::ClientConfig;
-            use rdkafka::Message;
-            use futures::StreamExt;
+            // Create consumer configuration
+            let mut consumer_config = crate::consumer::ConsumerConfig::builder()
+                .brokers(kafka_config.brokers)
+                .group_id(kafka_config.group_id)
+                .topics(kafka_config.topics);
             
-            let mut config = ClientConfig::new();
-            config
-                .set("bootstrap.servers", &kafka_config.brokers)
-                .set("group.id", &kafka_config.group_id)
-                .set("enable.auto.commit", "true")
-                .set("auto.offset.reset", "latest");
-            
-            // Add any additional properties
-            for (key, value) in &kafka_config.properties {
-                config.set(key, value);
+            // Apply optional configurations
+            if let Some(batch_size) = kafka_config.batch_size {
+                consumer_config = consumer_config.batch_size(batch_size);
             }
             
-            let consumer: StreamConsumer = match config.create() {
-                Ok(c) => c,
-                Err(e) => {
-                    error!("Failed to create Kafka consumer: {}", e);
-                    return;
+            if let Some(max_retries) = kafka_config.max_retries {
+                consumer_config = consumer_config.max_retries(max_retries);
+            }
+            
+            if let Some(dlq_topic) = kafka_config.dlq_topic {
+                consumer_config = consumer_config.dlq_topic(dlq_topic);
+            }
+            
+            if let Some(buffer_size) = kafka_config.backpressure_buffer_size {
+                consumer_config = consumer_config.channel_buffer_size(buffer_size);
+            }
+            
+            // Add any additional Kafka properties
+            for (key, value) in kafka_config.properties {
+                consumer_config = consumer_config.kafka_property(key, value);
+            }
+            
+            let config = consumer_config.build();
+            
+            // Create the consumer
+            match crate::consumer::create_sigma_consumer(engine, config).await {
+                Ok(consumer) => {
+                    info!("Successfully created Redpanda consumer");
+                    if let Err(e) = consumer.run().await {
+                        error!("Consumer error: {}", e);
+                    }
                 }
-            };
-            
-            // Subscribe to topics
-            let topics: Vec<&str> = kafka_config.topics.iter().map(|s| s.as_str()).collect();
-            if let Err(e) = consumer.subscribe(&topics) {
-                error!("Failed to subscribe to topics: {}", e);
-                return;
-            }
-            
-            // Process messages
-            let mut message_stream = consumer.stream();
-            while let Some(message) = message_stream.next().await {
-                match message {
-                    Ok(msg) => {
-                        if let Some(payload) = msg.payload() {
-                            // Process event
-                            match serde_json::from_slice::<serde_json::Value>(payload) {
-                                Ok(json) => {
-                                    let event = crate::DynamicEvent::new(json);
-                                    if let Err(e) = engine.process_event(event).await {
-                                        error!("Failed to process event: {}", e);
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Failed to parse JSON: {}", e);
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!("Kafka error: {}", e);
-                    }
+                Err(e) => {
+                    error!("Failed to create consumer: {}", e);
                 }
             }
         }
@@ -271,7 +255,7 @@ impl SigmaEngine {
     }
     
     /// Process a single event
-    async fn process_event(&self, event: crate::DynamicEvent) -> Result<()> {
+    pub async fn process_event(&self, event: crate::DynamicEvent) -> Result<()> {
         let _results = self.ruleset.evaluate(&event).await?;
         // Process results...
         Ok(())

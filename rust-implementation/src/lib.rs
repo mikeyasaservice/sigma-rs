@@ -52,6 +52,9 @@ pub mod result;
 /// Service layer with Tokio integration
 pub mod service;
 
+/// Consumer implementation for Redpanda/Kafka
+pub mod consumer;
+
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -91,6 +94,16 @@ pub struct KafkaConfig {
     pub topics: Vec<String>,
     /// Additional Kafka properties
     pub properties: std::collections::HashMap<String, String>,
+    /// Batch size for processing
+    pub batch_size: Option<usize>,
+    /// Maximum retries for failed messages
+    pub max_retries: Option<u32>,
+    /// Dead letter queue topic
+    pub dlq_topic: Option<String>,
+    /// Backpressure buffer size
+    pub backpressure_buffer_size: Option<usize>,
+    /// Enable detailed metrics
+    pub enable_metrics: bool,
 }
 
 impl Default for SigmaEngineBuilder {
