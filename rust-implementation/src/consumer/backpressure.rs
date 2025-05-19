@@ -513,4 +513,114 @@ mod tests {
         assert!(controller.should_resume());
         assert!(!controller.is_paused());
     }
+    
+    #[tokio::test]
+    async fn test_memory_backpressure() {
+        let controller = BackpressureController::with_memory_limit(10, 1024, 0.8, 0.5);
+        
+        // Update memory usage
+        controller.update_avg_message_size(100);
+        
+        // Reserve memory
+        let reservation = controller.try_reserve_memory(500).unwrap();
+        assert_eq!(controller.current_memory_usage(), 500);
+        
+        // Try to exceed limit
+        let result = controller.try_reserve_memory(600);
+        assert!(result.is_none());
+        
+        // Release memory
+        drop(reservation);
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        assert_eq!(controller.current_memory_usage(), 0);
+    }
+    
+    #[tokio::test]
+    async fn test_adaptive_backpressure() {
+        let mut controller = AdaptiveBackpressureController::new(
+            100,  // initial
+            10,   // min
+            1000, // max
+            0.8,  // pause threshold
+            0.5,  // resume threshold
+            Duration::from_millis(100), // adjustment interval
+            Duration::from_millis(100), // target latency
+            0.95, // target success rate
+        );
+        
+        // Record some metrics
+        for _ in 0..10 {
+            controller.base_controller.record_success(Duration::from_millis(50)).await;
+        }
+        controller.base_controller.record_failure().await;
+        
+        // Should increase limit (good latency, decent success rate)
+        controller.adjust_limits().await;
+        let new_limit = controller.base_controller.max_inflight.load(Ordering::Relaxed);
+        assert!(new_limit > 100);
+        
+        // Record slow processing
+        for _ in 0..10 {
+            controller.base_controller.record_success(Duration::from_millis(200)).await;
+        }
+        
+        // Should decrease limit (bad latency)
+        controller.adjust_limits().await;
+        let newer_limit = controller.base_controller.max_inflight.load(Ordering::Relaxed);
+        assert!(newer_limit < new_limit);
+    }
+    
+    #[tokio::test]
+    async fn test_permit_concurrency() {
+        let controller = Arc::new(BackpressureController::new(5, 0.8, 0.5));
+        
+        // Spawn multiple tasks acquiring permits
+        let mut handles = vec![];
+        for i in 0..10 {
+            let ctrl = controller.clone();
+            let handle = tokio::spawn(async move {
+                let _permit = ctrl.acquire().await;
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                i
+            });
+            handles.push(handle);
+        }
+        
+        // All tasks should complete eventually
+        for handle in handles {
+            let result = handle.await.unwrap();
+            assert!(result < 10);
+        }
+        
+        // All permits should be released
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(controller.inflight_count(), 0);
+    }
+    
+    #[test]
+    fn test_performance_metrics() {
+        let metrics = PerformanceMetrics::new();
+        
+        metrics.record_success(Duration::from_millis(100));
+        metrics.record_success(Duration::from_millis(200));
+        metrics.record_failure();
+        
+        assert_eq!(metrics.total_processed(), 3);
+        assert_eq!(metrics.successful(), 2);
+        assert_eq!(metrics.failed(), 1);
+        assert!((metrics.success_rate() - 0.667).abs() < 0.01);
+        assert_eq!(metrics.avg_latency(), Duration::from_millis(150));
+    }
+    
+    #[tokio::test]
+    async fn test_edge_cases() {
+        // Test with zero max inflight
+        let controller = BackpressureController::new(0, 0.8, 0.5);
+        assert!(controller.should_pause());
+        
+        // Test with equal thresholds (should still work)
+        let controller2 = BackpressureController::new(10, 0.5, 0.5);
+        let _permit = controller2.acquire().await;
+        assert!(!controller2.should_pause());
+    }
 }

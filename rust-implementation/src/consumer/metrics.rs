@@ -453,7 +453,7 @@ mod tests {
     use super::*;
     
     #[test]
-    fn test_metrics() {
+    fn test_basic_metrics() {
         let metrics = ConsumerMetrics::new();
         
         metrics.increment_consumed();
@@ -463,5 +463,163 @@ mod tests {
         assert_eq!(metrics.messages_consumed.load(Ordering::Relaxed), 1);
         assert_eq!(metrics.messages_processed.load(Ordering::Relaxed), 1);
         assert_eq!(metrics.success_rate(), 1.0);
+    }
+    
+    #[test]
+    fn test_partition_metrics() {
+        let metrics = ConsumerMetrics::new();
+        
+        // Record partition-level metrics
+        metrics.record_partition_lag("topic1".to_string(), 0, 100);
+        metrics.record_partition_lag("topic1".to_string(), 1, 200);
+        metrics.record_partition_lag("topic2".to_string(), 0, 50);
+        
+        let lag = metrics.partition_lag.read().unwrap();
+        assert_eq!(*lag.get(&("topic1".to_string(), 0)).unwrap(), 100);
+        assert_eq!(*lag.get(&("topic1".to_string(), 1)).unwrap(), 200);
+        assert_eq!(*lag.get(&("topic2".to_string(), 0)).unwrap(), 50);
+    }
+    
+    #[test]
+    fn test_error_tracking() {
+        let metrics = ConsumerMetrics::new();
+        
+        metrics.record_error("kafka_error");
+        metrics.record_error("processing_error");
+        metrics.record_error("kafka_error");
+        
+        let errors = metrics.error_counts.read().unwrap();
+        assert_eq!(*errors.get("kafka_error").unwrap(), 2);
+        assert_eq!(*errors.get("processing_error").unwrap(), 1);
+    }
+    
+    #[test]
+    fn test_rate_calculations() {
+        let metrics = ConsumerMetrics::new();
+        
+        // Simulate consuming messages
+        for _ in 0..100 {
+            metrics.increment_consumed();
+        }
+        
+        // Since we don't have a way to mock time, just verify the counter
+        assert_eq!(metrics.messages_consumed.load(Ordering::Relaxed), 100);
+        
+        // Test messages per second (will be 0 without time passing)
+        assert!(metrics.messages_per_second() >= 0.0);
+    }
+    
+    #[test]
+    fn test_processing_stats() {
+        let metrics = ConsumerMetrics::new();
+        
+        // Record various processing durations
+        metrics.record_processing_duration(Duration::from_millis(10));
+        metrics.record_processing_duration(Duration::from_millis(20));
+        metrics.record_processing_duration(Duration::from_millis(30));
+        metrics.record_processing_duration(Duration::from_millis(40));
+        metrics.record_processing_duration(Duration::from_millis(50));
+        
+        let stats = metrics.processing_stats();
+        assert_eq!(stats.count, 5);
+        assert!((stats.mean.as_millis() - 30).abs() < 5); // approximately 30ms
+        assert!(stats.min <= Duration::from_millis(10));
+        assert!(stats.max >= Duration::from_millis(50));
+    }
+    
+    #[test]
+    fn test_prometheus_export() {
+        let metrics = ConsumerMetrics::new();
+        
+        // Set up some metrics
+        metrics.increment_consumed();
+        metrics.increment_processed();
+        metrics.increment_failed();
+        metrics.increment_dlq();
+        metrics.increment_retried(3);
+        metrics.record_partition_lag("test-topic".to_string(), 0, 100);
+        metrics.record_commit_duration(Duration::from_millis(5));
+        metrics.record_error("test_error");
+        
+        let output = metrics.export_prometheus();
+        
+        // Verify Prometheus format
+        assert!(output.contains("# TYPE kafka_messages_consumed_total counter"));
+        assert!(output.contains("# TYPE kafka_messages_processed_total counter"));
+        assert!(output.contains("# TYPE kafka_messages_failed_total counter"));
+        assert!(output.contains("# TYPE kafka_partition_lag gauge"));
+        assert!(output.contains("# TYPE kafka_commit_duration_seconds histogram"));
+        assert!(output.contains("# TYPE kafka_errors_total counter"));
+        
+        // Verify values
+        assert!(output.contains("kafka_messages_consumed_total 1"));
+        assert!(output.contains("kafka_messages_processed_total 1"));
+        assert!(output.contains("kafka_messages_failed_total 1"));
+        assert!(output.contains("kafka_partition_lag{topic=\"test-topic\",partition=\"0\"} 100"));
+    }
+    
+    #[test]
+    fn test_commit_tracking() {
+        let metrics = ConsumerMetrics::new();
+        
+        // Track commit operations
+        for i in 1..=5 {
+            metrics.record_commit_duration(Duration::from_millis(i * 10));
+        }
+        
+        // Duration distribution should have been updated
+        assert_eq!(metrics.messages_consumed.load(Ordering::Relaxed), 0); // No messages consumed
+        // Note: We can't directly test distribution without exposing internals
+    }
+    
+    #[test]
+    fn test_thread_safety() {
+        use std::thread;
+        use std::sync::Arc;
+        
+        let metrics = Arc::new(ConsumerMetrics::new());
+        let mut handles = vec![];
+        
+        // Spawn multiple threads updating metrics
+        for _ in 0..10 {
+            let m = metrics.clone();
+            let handle = thread::spawn(move || {
+                for _ in 0..100 {
+                    m.increment_consumed();
+                    m.increment_processed();
+                }
+            });
+            handles.push(handle);
+        }
+        
+        // Wait for all threads
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        
+        // Verify totals
+        assert_eq!(metrics.messages_consumed.load(Ordering::Relaxed), 1000);
+        assert_eq!(metrics.messages_processed.load(Ordering::Relaxed), 1000);
+    }
+    
+    #[test]
+    fn test_rebalance_tracking() {
+        let metrics = ConsumerMetrics::new();
+        
+        metrics.increment_rebalances();
+        metrics.increment_rebalances();
+        
+        assert_eq!(metrics.rebalance_count.load(Ordering::Relaxed), 2);
+    }
+    
+    #[test]
+    fn test_connection_errors() {
+        let metrics = ConsumerMetrics::new();
+        
+        metrics.increment_connection_errors();
+        metrics.increment_connection_errors();
+        metrics.increment_connection_errors();
+        
+        assert_eq!(metrics.connection_errors.load(Ordering::Relaxed), 3);
     }
 }
