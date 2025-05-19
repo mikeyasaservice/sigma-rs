@@ -25,7 +25,7 @@ pub use error::{ConsumerError, ConsumerResult};
 pub use processor::MessageProcessor;
 pub use metrics::ConsumerMetrics;
 pub use offset_manager::OffsetManager;
-pub use backpressure::BackpressureController;
+pub use backpressure::{BackpressureController, AdaptiveBackpressureController, AdaptiveBackpressureConfig};
 pub use retry::{RetryPolicy, RetryExecutor, RetryResult};
 pub use dlq::{DlqProducer, DlqConfig};
 pub use shutdown::{ShutdownState, ShutdownCoordinator};

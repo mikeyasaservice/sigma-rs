@@ -285,6 +285,8 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                     &mut task.attempt,
                 ).await;
                 
+                let processing_duration = task.start_time.elapsed();
+                
                 match result {
                     Ok(()) => {
                         metrics.increment_processed();
@@ -296,6 +298,9 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                             task.message.partition(),
                             task.message.offset(),
                         ).await;
+                        
+                        // Record success in backpressure controller
+                        backpressure.record_success(processing_duration).await;
                     }
                     Err(e) => {
                         metrics.increment_failed();
@@ -311,11 +316,19 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                                 }
                             }
                         }
+                        
+                        // Record failure in backpressure controller
+                        backpressure.record_failure().await;
                     }
                 }
                 
                 // Record processing duration
-                metrics.record_processing_duration(task.start_time.elapsed());
+                metrics.record_processing_duration(processing_duration);
+                
+                // Update message size estimate (if we have payload size)
+                if let Some(payload) = task.message.payload() {
+                    backpressure.update_avg_message_size(payload.len());
+                }
                 
                 // Remove inflight message
                 shutdown_state.remove_inflight_message().await;
@@ -379,6 +392,24 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                     }
                 }
             }
+        })
+    }
+    
+    /// Enable adaptive backpressure control
+    pub fn spawn_adaptive_controller(&self, config: crate::consumer::backpressure::AdaptiveBackpressureConfig) -> JoinHandle<()> {
+        let controller = crate::consumer::backpressure::AdaptiveBackpressureController::new(
+            config.initial_inflight,
+            config.min_inflight,
+            config.max_inflight,
+            config.pause_threshold,
+            config.resume_threshold,
+            config.adjustment_interval,
+            config.target_latency,
+            config.target_success_rate,
+        );
+        
+        tokio::spawn(async move {
+            controller.run_adjustment_loop().await;
         })
     }
     
