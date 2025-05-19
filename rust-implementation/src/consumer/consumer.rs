@@ -9,6 +9,7 @@ use crate::consumer::{
     backpressure::BackpressureController,
     retry::{RetryPolicy, RetryExecutor, RetryResult},
     dlq::DlqProducer,
+    shutdown::ShutdownState,
 };
 
 use rdkafka::{
@@ -35,6 +36,7 @@ pub struct RedpandaConsumer<P: MessageProcessor> {
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
     dlq_producer: Option<Arc<DlqProducer>>,
+    shutdown_state: Arc<ShutdownState>,
 }
 
 impl<P: MessageProcessor> RedpandaConsumer<P> {
@@ -112,6 +114,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         );
         
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        let shutdown_state = Arc::new(ShutdownState::new());
         
         Ok(Self {
             config,
@@ -124,6 +127,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             shutdown_tx,
             shutdown_rx,
             dlq_producer,
+            shutdown_state,
         })
     }
     
@@ -201,6 +205,10 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             
             while !*shutdown_rx.borrow() {
                 tokio::select! {
+                    _ = shutdown_rx.changed() => {
+                        info!("Consumer loop received shutdown signal");
+                        break;
+                    }
                     message = stream.next() => {
                         match message {
                             Some(Ok(msg)) => {
@@ -240,10 +248,6 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                             None => break,
                         }
                     }
-                    _ = shutdown_rx.changed() => {
-                        info!("Consumer loop shutting down");
-                        break;
-                    }
                 }
             }
         })
@@ -261,11 +265,15 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         let backpressure = self.backpressure.clone();
         let config = self.config.clone();
         let dlq_producer = self.dlq_producer.clone();
+        let shutdown_state = self.shutdown_state.clone();
         
         tokio::spawn(async move {
             info!("Processor worker {} started", worker_id);
             
             while let Some(mut task) = task_rx.recv().await {
+                // Track inflight message
+                shutdown_state.add_inflight_message().await;
+                
                 // Acquire backpressure permit
                 let _permit = backpressure.acquire().await;
                 
@@ -308,6 +316,9 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                 
                 // Record processing duration
                 metrics.record_processing_duration(task.start_time.elapsed());
+                
+                // Remove inflight message
+                shutdown_state.remove_inflight_message().await;
             }
             
             info!("Processor worker {} stopped", worker_id);
@@ -374,8 +385,25 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
     /// Shutdown the consumer gracefully
     pub async fn shutdown(&self) -> ConsumerResult<()> {
         info!("Initiating consumer shutdown");
+        
+        // Start shutdown process
+        self.shutdown_state.start_shutdown().await;
+        
+        // Signal all workers to stop
         self.shutdown_tx.send(true).map_err(|_| ConsumerError::ShutdownError("Failed to send shutdown signal".to_string()))?;
-        Ok(())
+        
+        // Wait for all inflight messages to complete
+        let timeout = Duration::from_secs(30);
+        match self.shutdown_state.wait_for_completion(timeout).await {
+            Ok(()) => {
+                info!("Graceful shutdown completed");
+                Ok(())
+            }
+            Err(e) => {
+                error!("Shutdown timeout: {}", e);
+                Err(ConsumerError::ShutdownError(e.to_string()))
+            }
+        }
     }
 }
 

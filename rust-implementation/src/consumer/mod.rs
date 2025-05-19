@@ -17,6 +17,7 @@ pub mod offset_manager;
 pub mod backpressure;
 pub mod retry;
 pub mod dlq;
+pub mod shutdown;
 
 pub use config::{ConsumerConfig, ConsumerConfigBuilder};
 pub use consumer::RedpandaConsumer;
@@ -27,6 +28,7 @@ pub use offset_manager::OffsetManager;
 pub use backpressure::BackpressureController;
 pub use retry::{RetryPolicy, RetryExecutor, RetryResult};
 pub use dlq::{DlqProducer, DlqConfig};
+pub use shutdown::{ShutdownState, ShutdownCoordinator};
 
 use crate::DynamicEvent;
 use crate::service::SigmaEngine;
