@@ -170,7 +170,11 @@ impl SigmaService {
             }
             
             if let Some(max_retries) = kafka_config.max_retries {
-                consumer_config = consumer_config.max_retries(max_retries);
+                let retry_policy = crate::consumer::retry::RetryPolicy {
+                    max_retries,
+                    ..Default::default()
+                };
+                consumer_config = consumer_config.retry_policy(retry_policy);
             }
             
             if let Some(dlq_topic) = kafka_config.dlq_topic {

@@ -37,10 +37,8 @@ pub struct ConsumerConfig {
     /// Processing timeout per message
     pub processing_timeout: Duration,
     
-    /// Retry configuration
-    pub max_retries: u32,
-    pub retry_backoff: Duration,
-    pub max_retry_backoff: Duration,
+    /// Retry policy
+    pub retry_policy: crate::consumer::retry::RetryPolicy,
     
     /// Dead letter queue configuration
     pub dlq_topic: Option<String>,
@@ -73,9 +71,7 @@ impl Default for ConsumerConfig {
             auto_offset_reset: "latest".to_string(),
             batch_size: 100,
             processing_timeout: Duration::from_secs(30),
-            max_retries: 3,
-            retry_backoff: Duration::from_millis(100),
-            max_retry_backoff: Duration::from_secs(10),
+            retry_policy: crate::consumer::retry::RetryPolicy::default(),
             dlq_topic: None,
             dlq_after_retries: 3,
             channel_buffer_size: 1000,
@@ -131,13 +127,8 @@ impl ConsumerConfigBuilder {
         self
     }
     
-    pub fn max_retries(mut self, retries: u32) -> Self {
-        self.config.max_retries = retries;
-        self
-    }
-    
-    pub fn retry_backoff(mut self, backoff: Duration) -> Self {
-        self.config.retry_backoff = backoff;
+    pub fn retry_policy(mut self, policy: crate::consumer::retry::RetryPolicy) -> Self {
+        self.config.retry_policy = policy;
         self
     }
     
@@ -197,6 +188,10 @@ impl ConsumerConfig {
         
         if self.batch_size == 0 {
             return Err("Batch size must be greater than 0".to_string());
+        }
+        
+        if self.dlq_after_retries > self.retry_policy.max_retries {
+            return Err("DLQ retry threshold cannot exceed max retries".to_string());
         }
         
         if self.pause_threshold <= self.resume_threshold {

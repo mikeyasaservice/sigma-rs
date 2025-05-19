@@ -52,6 +52,7 @@ chrono = "0.4"
 walkdir = "2.5"
 globset = "0.4"
 lazy_static = "1.4"
+rand = "0.8"
 
 [build-dependencies]
 tonic-build = "0.11"

@@ -7,6 +7,8 @@ use crate::consumer::{
     metrics::ConsumerMetrics,
     offset_manager::{OffsetManager, CommitStrategy},
     backpressure::BackpressureController,
+    retry::{RetryPolicy, RetryExecutor, RetryResult},
+    dlq::DlqProducer,
 };
 
 use rdkafka::{
@@ -32,7 +34,7 @@ pub struct RedpandaConsumer<P: MessageProcessor> {
     commit_strategy: CommitStrategy,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
-    dlq_producer: Option<Arc<rdkafka::producer::FutureProducer>>,
+    dlq_producer: Option<Arc<DlqProducer>>,
 }
 
 impl<P: MessageProcessor> RedpandaConsumer<P> {
@@ -76,12 +78,16 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                 .set("bootstrap.servers", &config.brokers)
                 .set("message.timeout.ms", "30000");
             
-            let producer = dlq_config
+            let producer: rdkafka::producer::FutureProducer = dlq_config
                 .create()
                 .map_err(|e| ConsumerError::ConnectionError(format!("Failed to create DLQ producer: {}", e)))?;
             
+            let dlq = DlqProducer::new(producer, dlq_topic.clone())
+                .with_timeout(Duration::from_secs(30))
+                .with_metadata(true);
+            
             info!("Created DLQ producer for topic: {}", dlq_topic);
-            Some(Arc::new(producer))
+            Some(Arc::new(dlq))
         } else {
             None
         };
@@ -290,7 +296,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                         // Send to DLQ if configured and max retries exceeded
                         if task.attempt >= config.dlq_after_retries {
                             if let Some(dlq) = &dlq_producer {
-                                if let Err(e) = send_to_dlq(dlq, &task.message, &config.dlq_topic.as_ref().unwrap()).await {
+                                if let Err(e) = dlq.send_message(&task.message, &e.to_string(), task.attempt).await {
                                     error!("Failed to send to DLQ: {}", e);
                                 } else {
                                     metrics.increment_dlq();
@@ -387,46 +393,19 @@ async fn process_message_with_retry<P: MessageProcessor>(
     config: &ConsumerConfig,
     attempt: &mut u32,
 ) -> Result<(), P::Error> {
-    let mut backoff = config.retry_backoff;
+    let executor = RetryExecutor::new(config.retry_policy.clone());
     
-    loop {
-        match processor.process(message).await {
-            Ok(()) => return Ok(()),
-            Err(e) if *attempt < config.max_retries && processor.is_retryable(&e) => {
-                *attempt += 1;
-                debug!("Retrying message processing, attempt {}/{}", attempt, config.max_retries);
-                tokio::time::sleep(backoff).await;
-                backoff = (backoff * 2).min(config.max_retry_backoff);
-            }
-            Err(e) => return Err(e),
+    match executor.execute_with_predicate(
+        || async { processor.process(message).await },
+        |e| processor.is_retryable(e)
+    ).await {
+        RetryResult::Success { value, attempts } => {
+            *attempt = attempts;
+            Ok(value)
+        }
+        RetryResult::Failed { error, attempts } => {
+            *attempt = attempts;
+            Err(error)
         }
     }
-}
-
-/// Send a message to the dead letter queue
-async fn send_to_dlq(
-    producer: &rdkafka::producer::FutureProducer,
-    message: &rdkafka::message::OwnedMessage,
-    dlq_topic: &str,
-) -> ConsumerResult<()> {
-    use rdkafka::producer::FutureRecord;
-    
-    let key = message.key().map(|k| k.to_vec());
-    let payload = message.payload().map(|p| p.to_vec());
-    
-    let mut record = FutureRecord::to(dlq_topic);
-    
-    if let Some(key) = &key {
-        record = record.key(key);
-    }
-    
-    if let Some(payload) = &payload {
-        record = record.payload(payload);
-    }
-    
-    producer.send(record, Duration::from_secs(10))
-        .await
-        .map_err(|(e, _)| ConsumerError::DlqError(format!("Failed to send to DLQ: {}", e)))?;
-    
-    Ok(())
 }
