@@ -102,6 +102,10 @@ harness = false
 name = "consumer_benchmarks"
 harness = false
 
+[[bench]]
+name = "sigma_benchmarks"
+harness = false
+
 [[example]]
 name = "simple_detection"
 path = "examples/simple_detection.rs"
