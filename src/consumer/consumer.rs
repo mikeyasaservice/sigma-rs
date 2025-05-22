@@ -65,11 +65,16 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             .create()
             .map_err(|e| ConsumerError::ConnectionError(format!("Failed to create consumer: {}", e)))?;
         
-        // Subscribe to topics
+        // Subscribe to topics with timeout
         let topics: Vec<&str> = config.topics.iter().map(|s| s.as_str()).collect();
-        consumer
-            .subscribe(&topics)
-            .map_err(|e| ConsumerError::ConnectionError(format!("Failed to subscribe: {}", e)))?;
+        tokio::time::timeout(
+            Duration::from_secs(30), // subscription timeout
+            async {
+                consumer.subscribe(&topics)
+                    .map_err(|e| ConsumerError::ConnectionError(format!("Failed to subscribe: {}", e)))
+            }
+        ).await
+        .map_err(|_| ConsumerError::ConnectionError("Subscription timeout".to_string()))??;
         
         info!("Subscribed to topics: {:?}", config.topics);
         
@@ -511,7 +516,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                     
                     // Mark offset for commit
                     offset_manager.mark_offset(
-                        task.message.topic().to_string(),
+                        task.message.topic(),
                         task.message.partition(),
                         task.message.offset(),
                     ).await;
@@ -603,7 +608,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                     
                     // Mark offset for commit
                     offset_manager.mark_offset(
-                        task.message.topic().to_string(),
+                        task.message.topic(),
                         task.message.partition(),
                         task.message.offset(),
                     ).await;

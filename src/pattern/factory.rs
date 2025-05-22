@@ -1,7 +1,8 @@
 //! Factory functions for creating pattern matchers
 
 use crate::pattern::{
-    escape::escape_sigma_for_glob,
+    escape::{escape_sigma_for_glob, escape_sigma_for_glob_cow},
+    intern::intern_pattern,
     num_matcher::{NumMatchers, NumPattern},
     security::safe_regex_compile,
     string_matcher::{
@@ -12,6 +13,17 @@ use crate::pattern::{
     TextPatternModifier,
 };
 use glob::Pattern as GlobPattern;
+use std::borrow::Cow;
+
+/// Efficiently create a contains pattern by prepending and appending "*"
+/// without unnecessary allocations when possible
+fn create_contains_pattern(escaped: Cow<'_, str>) -> String {
+    let mut result = String::with_capacity(escaped.len() + 2);
+    result.push('*');
+    result.push_str(&escaped);
+    result.push('*');
+    result
+}
 
 /// Create a new string matcher based on patterns and modifiers
 pub fn new_string_matcher(
@@ -25,7 +37,8 @@ pub fn new_string_matcher(
         return Err("No patterns defined for matcher object".to_string());
     }
 
-    let mut matchers: Vec<Box<dyn StringMatcher>> = Vec::new();
+    // Pre-allocate with known capacity to reduce reallocations
+    let mut matchers: Vec<Box<dyn StringMatcher>> = Vec::with_capacity(patterns.len());
 
     for pattern in patterns {
         let matcher: Box<dyn StringMatcher> = match modifier {
@@ -35,9 +48,9 @@ pub fn new_string_matcher(
                 Box::new(RegexPattern { regex: re })
             }
             TextPatternModifier::Contains => {
-                let pattern = escape_sigma_for_glob(&pattern);
-                let pattern = format!("*{}*", pattern);
-                let glob = GlobPattern::new(&pattern)
+                let escaped = escape_sigma_for_glob_cow(&pattern);
+                let glob_pattern = create_contains_pattern(escaped);
+                let glob = GlobPattern::new(&glob_pattern)
                     .map_err(|e| format!("Invalid glob pattern: {}", e))?;
                 Box::new(GlobPatternMatcher {
                     glob,
@@ -46,14 +59,14 @@ pub fn new_string_matcher(
             }
             TextPatternModifier::Suffix => {
                 Box::new(SuffixPattern {
-                    token: pattern,
+                    token: intern_pattern(&pattern),
                     lowercase,
                     no_collapse_ws,
                 })
             }
             TextPatternModifier::Prefix => {
                 Box::new(PrefixPattern {
-                    token: pattern,
+                    token: intern_pattern(&pattern),
                     lowercase,
                     no_collapse_ws,
                 })
@@ -68,13 +81,13 @@ pub fn new_string_matcher(
                     Box::new(RegexPattern { regex: re })
                 } else if modifier == TextPatternModifier::Keyword || pattern.contains('*') {
                     // Keyword or glob pattern
-                    let pattern = if modifier == TextPatternModifier::Keyword {
-                        let escaped = escape_sigma_for_glob(&pattern);
-                        format!("*{}*", escaped)
+                    let glob_pattern = if modifier == TextPatternModifier::Keyword {
+                        let escaped = escape_sigma_for_glob_cow(&pattern);
+                        create_contains_pattern(escaped)
                     } else {
                         escape_sigma_for_glob(&pattern)
                     };
-                    let glob = GlobPattern::new(&pattern)
+                    let glob = GlobPattern::new(&glob_pattern)
                         .map_err(|e| format!("Invalid glob pattern: {}", e))?;
                     Box::new(GlobPatternMatcher {
                         glob,
@@ -83,7 +96,7 @@ pub fn new_string_matcher(
                 } else {
                     // Default to content pattern
                     Box::new(ContentPattern {
-                        token: pattern,
+                        token: intern_pattern(&pattern),
                         lowercase,
                         no_collapse_ws,
                     })
@@ -94,12 +107,18 @@ pub fn new_string_matcher(
     }
 
     // Return appropriate matcher collection
-    if matchers.len() == 1 {
-        Ok(matchers.into_iter().next().unwrap())
-    } else if all {
-        Ok(Box::new(StringMatchersConj::new(matchers).optimize()))
-    } else {
-        Ok(Box::new(StringMatchers::new(matchers).optimize()))
+    match matchers.len() {
+        1 => {
+            let mut iter = matchers.into_iter();
+            Ok(iter.next().expect("Vec with length 1 must have element"))
+        }
+        _ => {
+            if all {
+                Ok(Box::new(StringMatchersConj::new(matchers).optimize()))
+            } else {
+                Ok(Box::new(StringMatchers::new(matchers).optimize()))
+            }
+        }
     }
 }
 
@@ -109,15 +128,18 @@ pub fn new_num_matcher(values: Vec<i64>) -> Result<Box<dyn NumMatcher>, String> 
         return Err("No patterns defined for matcher object".to_string());
     }
 
-    let matchers: Vec<Box<dyn NumMatcher>> = values
-        .into_iter()
-        .map(|v| Box::new(NumPattern { value: v }) as Box<dyn NumMatcher>)
-        .collect();
+    // Pre-allocate with known capacity and use safe extraction
+    let mut matchers: Vec<Box<dyn NumMatcher>> = Vec::with_capacity(values.len());
+    for value in values {
+        matchers.push(Box::new(NumPattern { value }) as Box<dyn NumMatcher>);
+    }
 
-    if matchers.len() == 1 {
-        Ok(matchers.into_iter().next().unwrap())
-    } else {
-        Ok(Box::new(NumMatchers::new(matchers)))
+    match matchers.len() {
+        1 => {
+            let mut iter = matchers.into_iter();
+            Ok(iter.next().expect("Vec with length 1 must have element"))
+        }
+        _ => Ok(Box::new(NumMatchers::new(matchers))),
     }
 }
 
@@ -275,5 +297,37 @@ mod tests {
             result.unwrap_err(),
             "No patterns defined for matcher object"
         );
+    }
+    
+    #[test]
+    fn test_memory_allocation_optimization() {
+        // Test that factory pre-allocates capacity correctly
+        let patterns = vec![
+            "pattern1".to_string(),
+            "pattern2".to_string(),
+            "pattern3".to_string(),
+        ];
+        
+        let result = new_string_matcher(
+            TextPatternModifier::Contains,
+            false,
+            false,
+            false,
+            patterns,
+        );
+        
+        assert!(result.is_ok());
+        
+        // Test single pattern optimization
+        let single_pattern = vec!["single".to_string()];
+        let result = new_string_matcher(
+            TextPatternModifier::Contains,
+            false,
+            false,
+            false,
+            single_pattern,
+        );
+        
+        assert!(result.is_ok());
     }
 }

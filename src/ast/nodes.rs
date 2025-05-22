@@ -1,4 +1,5 @@
-use super::{Branch, Event, FieldRule, MatchResult};
+use super::{Branch, FieldRule, MatchResult};
+use crate::event::Event;
 use crate::error::SigmaError;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -6,11 +7,14 @@ use std::sync::Arc;
 /// Node for logical AND operation
 #[derive(Debug, Clone)]
 pub struct NodeAnd {
+    /// Left branch of the AND operation
     pub left: Arc<dyn Branch>,
+    /// Right branch of the AND operation
     pub right: Arc<dyn Branch>,
 }
 
 impl NodeAnd {
+    /// Create a new AND node
     pub fn new(left: Arc<dyn Branch>, right: Arc<dyn Branch>) -> Self {
         Self { left, right }
     }
@@ -39,11 +43,14 @@ impl Branch for NodeAnd {
 /// Node for logical OR operation
 #[derive(Debug, Clone)]
 pub struct NodeOr {
+    /// Left branch of the OR operation
     pub left: Arc<dyn Branch>,
+    /// Right branch of the OR operation
     pub right: Arc<dyn Branch>,
 }
 
 impl NodeOr {
+    /// Create a new OR node
     pub fn new(left: Arc<dyn Branch>, right: Arc<dyn Branch>) -> Self {
         Self { left, right }
     }
@@ -72,10 +79,12 @@ impl Branch for NodeOr {
 /// Node for logical NOT operation
 #[derive(Debug, Clone)]
 pub struct NodeNot {
+    /// Branch to negate
     pub branch: Arc<dyn Branch>,
 }
 
 impl NodeNot {
+    /// Create a new NOT node
     pub fn new(branch: Arc<dyn Branch>) -> Self {
         Self { branch }
     }
@@ -99,28 +108,34 @@ impl Branch for NodeNot {
 /// Simple AND node for multiple branches
 #[derive(Debug, Clone)]
 pub struct NodeSimpleAnd {
+    /// Collection of branches that must all match
     pub branches: Vec<Arc<dyn Branch>>,
 }
 
 impl NodeSimpleAnd {
+    /// Create a new AND node with multiple branches
     pub fn new(branches: Vec<Arc<dyn Branch>>) -> Self {
         Self { branches }
     }
 
     /// Reduce to more efficient representation if possible
     pub fn reduce(self) -> Result<Arc<dyn Branch>, SigmaError> {
-        match self.branches.len() {
-            0 => Err(SigmaError::InvalidMatcher(
+        let mut iter = self.branches.into_iter();
+        match (iter.next(), iter.next(), iter.len()) {
+            (None, _, _) => Err(SigmaError::InvalidMatcher(
                 "Cannot reduce empty AND node - this indicates a parser bug".to_string()
             )),
-            1 => Ok(self.branches.into_iter().next().expect("Length verified to be 1")),
-            2 => {
-                let mut iter = self.branches.into_iter();
-                let left = iter.next().expect("Length verified to be 2");
-                let right = iter.next().expect("Length verified to be 2");
-                Ok(Arc::new(NodeAnd::new(left, right)))
+            (Some(single), None, 0) => Ok(single),
+            (Some(left), Some(right), 0) => Ok(Arc::new(NodeAnd::new(left, right))),
+            (Some(first), second, _) => {
+                // Reconstruct vector for multi-branch case
+                let mut branches = vec![first];
+                if let Some(second) = second {
+                    branches.push(second);
+                }
+                branches.extend(iter);
+                Ok(Arc::new(NodeSimpleAnd::new(branches)))
             }
-            _ => Ok(Arc::new(self)),
         }
     }
 }
@@ -149,28 +164,34 @@ impl Branch for NodeSimpleAnd {
 /// Simple OR node for multiple branches
 #[derive(Debug, Clone)]
 pub struct NodeSimpleOr {
+    /// Collection of branches where at least one must match
     pub branches: Vec<Arc<dyn Branch>>,
 }
 
 impl NodeSimpleOr {
+    /// Create a new OR node with multiple branches
     pub fn new(branches: Vec<Arc<dyn Branch>>) -> Self {
         Self { branches }
     }
 
     /// Reduce to more efficient representation if possible
     pub fn reduce(self) -> Result<Arc<dyn Branch>, SigmaError> {
-        match self.branches.len() {
-            0 => Err(SigmaError::InvalidMatcher(
+        let mut iter = self.branches.into_iter();
+        match (iter.next(), iter.next(), iter.len()) {
+            (None, _, _) => Err(SigmaError::InvalidMatcher(
                 "Cannot reduce empty OR node - this indicates a parser bug".to_string()
             )),
-            1 => Ok(self.branches.into_iter().next().expect("Length verified to be 1")),
-            2 => {
-                let mut iter = self.branches.into_iter();
-                let left = iter.next().expect("Length verified to be 2");
-                let right = iter.next().expect("Length verified to be 2");
-                Ok(Arc::new(NodeOr::new(left, right)))
+            (Some(single), None, 0) => Ok(single),
+            (Some(left), Some(right), 0) => Ok(Arc::new(NodeOr::new(left, right))),
+            (Some(first), second, _) => {
+                // Reconstruct vector for multi-branch case
+                let mut branches = vec![first];
+                if let Some(second) = second {
+                    branches.push(second);
+                }
+                branches.extend(iter);
+                Ok(Arc::new(NodeSimpleOr::new(branches)))
             }
-            _ => Ok(Arc::new(self)),
         }
     }
 }
@@ -218,12 +239,14 @@ pub struct Identifier {
 }
 
 impl Identifier {
+    /// Create a new identifier node
     pub fn new(field: String, pattern: super::FieldPattern) -> Self {
         Self {
-            field_rule: FieldRule::new(field, pattern),
+            field_rule: FieldRule::new(Arc::from(field), pattern),
         }
     }
     
+    /// Create an identifier node from an existing field rule
     pub fn from_rule(rule: FieldRule) -> Self {
         Self { field_rule: rule }
     }
@@ -243,15 +266,22 @@ impl Branch for Identifier {
 /// Comparison operators for aggregation conditions
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComparisonOp {
+    /// Greater than comparison (>)
     GreaterThan,
+    /// Greater than or equal comparison (>=)
     GreaterOrEqual,
+    /// Less than comparison (<)
     LessThan,
+    /// Less than or equal comparison (<=)
     LessOrEqual,
+    /// Equal comparison (==)
     Equal,
+    /// Not equal comparison (!=)
     NotEqual,
 }
 
 impl ComparisonOp {
+    /// Evaluate the comparison operation
     pub fn evaluate(&self, value: f64, threshold: f64) -> bool {
         match self {
             ComparisonOp::GreaterThan => value > threshold,
@@ -267,14 +297,20 @@ impl ComparisonOp {
 /// Node for aggregation operations
 #[derive(Debug, Clone)]
 pub struct NodeAggregation {
+    /// Aggregation function to apply
     pub function: crate::aggregation::AggregationFunction,
+    /// Comparison operator for the threshold
     pub comparison: ComparisonOp,
+    /// Threshold value for comparison
     pub threshold: f64,
+    /// Field to group by (optional)
     pub by_field: Option<String>,
+    /// Time window for aggregation (optional)
     pub time_window: Option<std::time::Duration>,
 }
 
 impl NodeAggregation {
+    /// Create a new aggregation node
     pub fn new(
         function: crate::aggregation::AggregationFunction,
         comparison: ComparisonOp,

@@ -7,7 +7,9 @@ use std::sync::Arc;
 use tokio::task;
 use tracing;
 
+/// Parser error types
 pub mod error;
+/// Validation utilities for parsed rules
 pub mod validate;
 
 pub use error::ParseError;
@@ -24,7 +26,7 @@ pub struct Parser {
     tokens: Vec<Item>,
     previous: Option<Item>,
     sigma: Detection,
-    condition: String,
+    condition: Arc<str>,
     result: Option<Arc<dyn Branch>>,
     no_collapse_ws: bool,
     max_tokens: usize,
@@ -33,7 +35,7 @@ pub struct Parser {
 impl Parser {
     /// Create a new parser with detection configuration
     pub fn new(sigma: Detection, no_collapse_ws: bool) -> Self {
-        let condition = sigma.condition().unwrap_or("").to_string();
+        let condition = Arc::from(sigma.condition().unwrap_or(""));
         Self {
             tokens: Vec::new(),
             previous: None,
@@ -47,7 +49,7 @@ impl Parser {
     
     /// Create a new parser with custom token limit
     pub fn new_with_limits(sigma: Detection, no_collapse_ws: bool, max_tokens: usize) -> Self {
-        let condition = sigma.condition().unwrap_or("").to_string();
+        let condition = Arc::from(sigma.condition().unwrap_or(""));
         Self {
             tokens: Vec::new(),
             previous: None,
@@ -72,7 +74,7 @@ impl Parser {
 
     /// Collect tokens from lexer and validate sequences
     async fn collect(&mut self) -> Result<(), ParseError> {
-        let (lexer, mut rx) = Lexer::new(self.condition.clone());
+        let (lexer, mut rx) = Lexer::new(&self.condition);
         
         // Start lexer in background
         let lexer_handle = task::spawn(async move {
@@ -127,7 +129,7 @@ impl Parser {
         if let Some(last) = &self.previous {
             if last.token != Token::LitEof {
                 return Err(ParseError::incomplete_sequence(
-                    self.condition.clone(),
+                    self.condition.to_string(),
                     self.tokens.clone(),
                     last.clone(),
                 ));
@@ -176,8 +178,17 @@ fn new_branch(
     }
 
     let mut token_iter = tokens.iter().peekable();
-    let mut and_branches: Vec<Arc<dyn Branch>> = Vec::new();
-    let mut or_branches: Vec<Arc<dyn Branch>> = Vec::new();
+    
+    // Estimate capacity based on token analysis for better performance
+    let identifier_count = tokens.iter().filter(|t| t.token == Token::Identifier).count();
+    let and_count = tokens.iter().filter(|t| matches!(t.token, Token::KeywordAnd)).count();
+    let or_count = tokens.iter().filter(|t| matches!(t.token, Token::KeywordOr)).count();
+    
+    let estimated_and_branches = (and_count + identifier_count / 2).max(1);
+    let estimated_or_branches = (or_count + identifier_count / 3).max(1);
+    
+    let mut and_branches: Vec<Arc<dyn Branch>> = Vec::with_capacity(estimated_and_branches);
+    let mut or_branches: Vec<Arc<dyn Branch>> = Vec::with_capacity(estimated_or_branches);
     let mut negated = false;
     let mut wildcard: Option<Token> = None;
 
@@ -379,26 +390,34 @@ fn create_rule_from_ident(
                 false,  // all
                 no_collapse_ws,
                 vec![processed.clone()],
-            ).map_err(|e| ParseError::parser_error(&e))?;
+            ).map_err(|e| ParseError::string_pattern_creation_failed(
+                field_name, 
+                &processed, 
+                e.to_string()
+            ))?;
             
             Ok(Arc::new(FieldRule::new(
-                field_name.to_string(),
+                Arc::from(field_name),
                 FieldPattern::String {
                     matcher: Arc::from(matcher),
-                    pattern_desc: processed,
+                    pattern_desc: Arc::from(processed),
                 },
             )))
         }
         serde_json::Value::Number(n) => {
             if let Some(num) = n.as_i64() {
                 let matcher = new_num_matcher(vec![num])
-                    .map_err(|e| ParseError::parser_error(&e))?;
+                    .map_err(|e| ParseError::numeric_pattern_creation_failed(
+                        field_name, 
+                        &n.to_string(), 
+                        e.to_string()
+                    ))?;
                 
                 Ok(Arc::new(FieldRule::new(
-                    field_name.to_string(),
+                    Arc::from(field_name),
                     FieldPattern::Numeric {
                         matcher: Arc::from(matcher),
-                        pattern_desc: n.to_string(),
+                        pattern_desc: Arc::from(n.to_string()),
                     },
                 )))
             } else {
@@ -409,13 +428,17 @@ fn create_rule_from_ident(
                     false,  // all
                     no_collapse_ws,
                     vec![n.to_string()],
-                ).map_err(|e| ParseError::parser_error(&e))?;
+                ).map_err(|e| ParseError::string_pattern_creation_failed(
+                    field_name, 
+                    &n.to_string(), 
+                    e.to_string()
+                ))?;
                 
                 Ok(Arc::new(FieldRule::new(
-                    field_name.to_string(),
+                    Arc::from(field_name),
                     FieldPattern::String {
                         matcher: Arc::from(matcher),
-                        pattern_desc: n.to_string(),
+                        pattern_desc: Arc::from(n.to_string()),
                     },
                 )))
             }
@@ -428,13 +451,17 @@ fn create_rule_from_ident(
                 false,  // all
                 no_collapse_ws,
                 vec![str_val.clone()],
-            ).map_err(|e| ParseError::parser_error(&e))?;
+            ).map_err(|e| ParseError::string_pattern_creation_failed(
+                field_name, 
+                &str_val, 
+                e.to_string()
+            ))?;
             
             Ok(Arc::new(FieldRule::new(
-                field_name.to_string(),
+                Arc::from(field_name),
                 FieldPattern::String {
                     matcher: Arc::from(matcher),
-                    pattern_desc: str_val,
+                    pattern_desc: Arc::from(str_val),
                 },
             )))
         }
@@ -464,10 +491,10 @@ fn create_rule_from_ident(
                         ) {
                             Ok(matcher) => {
                                 branches.push(Arc::new(FieldRule::new(
-                                    field_name.to_string(),
+                                    Arc::from(field_name),
                                     FieldPattern::String {
                                         matcher: Arc::from(matcher),
-                                        pattern_desc: processed,
+                                        pattern_desc: Arc::from(processed),
                                     },
                                 )) as Arc<dyn Branch>);
                             }
@@ -481,10 +508,10 @@ fn create_rule_from_ident(
                             match new_num_matcher(vec![num]) {
                                 Ok(matcher) => {
                                     branches.push(Arc::new(FieldRule::new(
-                                        field_name.to_string(),
+                                        Arc::from(field_name),
                                         FieldPattern::Numeric {
                                             matcher: Arc::from(matcher),
-                                            pattern_desc: n.to_string(),
+                                            pattern_desc: Arc::from(n.to_string()),
                                         },
                                     )) as Arc<dyn Branch>);
                                 }
@@ -502,10 +529,10 @@ fn create_rule_from_ident(
                             ) {
                                 Ok(matcher) => {
                                     branches.push(Arc::new(FieldRule::new(
-                                        field_name.to_string(),
+                                        Arc::from(field_name),
                                         FieldPattern::String {
                                             matcher: Arc::from(matcher),
-                                            pattern_desc: n.to_string(),
+                                            pattern_desc: Arc::from(n.to_string()),
                                         },
                                     )) as Arc<dyn Branch>);
                                 }
@@ -526,10 +553,10 @@ fn create_rule_from_ident(
                         ) {
                             Ok(matcher) => {
                                 branches.push(Arc::new(FieldRule::new(
-                                    field_name.to_string(),
+                                    Arc::from(field_name),
                                     FieldPattern::String {
                                         matcher: Arc::from(matcher),
-                                        pattern_desc: str_val,
+                                        pattern_desc: Arc::from(str_val),
                                     },
                                 )) as Arc<dyn Branch>);
                             }
@@ -555,11 +582,11 @@ fn create_rule_from_ident(
             }
             
             if branches.is_empty() {
-                return Err(ParseError::parser_error(&format!(
-                    "Empty array in field rule for '{}': all values failed to process. Errors: {}",
+                return Err(ParseError::no_valid_field_patterns(
+                    "unknown", // Rule ID not available at this level
                     field_name,
-                    errors.join("; ")
-                )));
+                    errors,
+                ));
             }
             
             NodeSimpleOr::new(branches).reduce()
@@ -569,10 +596,11 @@ fn create_rule_from_ident(
             // Handle complex field definitions
             create_complex_field_rule(field, obj, no_collapse_ws)
         }
-        _ => Err(ParseError::parser_error(&format!(
-            "Unsupported value type for field rule: {} -> {:?}", 
-            field, value
-        ))),
+        _ => Err(ParseError::field_pattern_creation_failed(
+            field, 
+            &format!("{:?}", value), 
+            "Unsupported value type for field rule"
+        )),
     }
 }
 
@@ -607,16 +635,17 @@ fn create_complex_field_rule(
     
     if branches.is_empty() {
         if !errors.is_empty() {
-            return Err(ParseError::parser_error(&format!(
-                "Failed to create complex field rule for '{}'. Errors: {}",
+            return Err(ParseError::no_valid_field_patterns(
+                "unknown", // Rule ID not available at this level
                 field,
-                errors.join("; ")
-            )));
+                errors,
+            ));
         }
-        return Err(ParseError::parser_error(&format!(
-            "Invalid complex field rule for '{}': no valid branches created",
-            field
-        )));
+        return Err(ParseError::field_pattern_creation_failed(
+            field,
+            "complex object",
+            "no valid branches created from object properties"
+        ));
     }
     
     // Log warnings if some fields failed but we have at least one valid branch
@@ -639,7 +668,10 @@ fn extract_all_to_rules(
     }
     
     if rules.is_empty() {
-        return Err(ParseError::parser_error("No detection fields found"));
+        return Err(ParseError::detection_parsing_failed(
+            "unknown", // Rule ID not available at this level
+            "No detection fields found in rule"
+        ));
     }
     
     Ok(rules)
