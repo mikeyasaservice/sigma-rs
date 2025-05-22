@@ -13,9 +13,8 @@ use anyhow::Result;
 use crate::{
     rule::{Rule, rule_from_yaml, RuleHandle},
     tree::{Tree, build_tree},
-    DynamicEvent,
+    event::DynamicEvent,
     ast::MatchResult,
-    event::adapter::AstEventAdapter,
     SigmaEngineBuilder,
     Result as SigmaResult,
     SigmaError,
@@ -223,8 +222,7 @@ impl RuleSet {
                 
                 tokio::spawn(async move {
                     let rule_start = std::time::Instant::now();
-                    let ast_event = AstEventAdapter::new(&event);
-                    let (matched, applicable) = tree.match_event(&ast_event).await;
+                    let (matched, applicable) = tree.match_event(&event).await;
                     let evaluation_time = rule_start.elapsed();
                     
                     let match_result = MatchResult {
@@ -341,7 +339,7 @@ mod tests {
     use serde_json::json;
 
     #[tokio::test]
-    async fn test_empty_ruleset() {
+    async fn test_empty_ruleset() -> SigmaResult<()> {
         let ruleset = RuleSet::new();
         assert!(ruleset.is_empty());
         assert_eq!(ruleset.len(), 0);
@@ -351,13 +349,14 @@ mod tests {
             "CommandLine": "test.exe"
         }));
         
-        let result = ruleset.evaluate(&event).await.unwrap();
+        let result = ruleset.evaluate(&event).await?;
         assert_eq!(result.rules_evaluated, 0);
         assert!(result.matches.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_add_rule() {
+    async fn test_add_rule() -> SigmaResult<()> {
         let mut ruleset = RuleSet::new();
         
         let rule_yaml = br#"
@@ -369,15 +368,16 @@ mod tests {
             condition: selection
         "#;
         
-        let rule = rule_from_yaml(rule_yaml).unwrap();
-        ruleset.add_rule(rule).await.unwrap();
+        let rule = rule_from_yaml(rule_yaml)?;
+        ruleset.add_rule(rule).await?;
         
         assert_eq!(ruleset.len(), 1);
         assert!(!ruleset.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_rule_evaluation() {
+    async fn test_rule_evaluation() -> SigmaResult<()> {
         let mut ruleset = RuleSet::new();
         
         // Add a matching rule
@@ -391,8 +391,8 @@ mod tests {
             condition: selection
         "#;
         
-        let rule = rule_from_yaml(rule_yaml).unwrap();
-        ruleset.add_rule(rule).await.unwrap();
+        let rule = rule_from_yaml(rule_yaml)?;
+        ruleset.add_rule(rule).await?;
         
         // Test matching event
         let event = DynamicEvent::new(json!({
@@ -400,7 +400,7 @@ mod tests {
             "CommandLine": "powershell.exe -Command Get-Process"
         }));
         
-        let result = ruleset.evaluate(&event).await.unwrap();
+        let result = ruleset.evaluate(&event).await?;
         assert_eq!(result.rules_evaluated, 1);
         assert_eq!(result.matches.len(), 1);
         assert!(result.matches[0].matched);
@@ -411,14 +411,15 @@ mod tests {
             "CommandLine": "notepad.exe"
         }));
         
-        let result = ruleset.evaluate(&event).await.unwrap();
+        let result = ruleset.evaluate(&event).await?;
         assert_eq!(result.rules_evaluated, 1);
         assert_eq!(result.matches.len(), 1);
         assert!(!result.matches[0].matched);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_concurrent_ruleset() {
+    async fn test_concurrent_ruleset() -> SigmaResult<()> {
         let ruleset = RuleSet::new();
         let concurrent = ConcurrentRuleSet::new(ruleset);
         
@@ -431,8 +432,8 @@ mod tests {
             condition: selection
         "#;
         
-        let rule = rule_from_yaml(rule_yaml).unwrap();
-        concurrent.add_rule(rule).await.unwrap();
+        let rule = rule_from_yaml(rule_yaml)?;
+        concurrent.add_rule(rule).await?;
         
         assert_eq!(concurrent.len().await, 1);
         
@@ -440,7 +441,8 @@ mod tests {
             "EventID": 1
         }));
         
-        let result = concurrent.evaluate(&event).await.unwrap();
+        let result = concurrent.evaluate(&event).await?;
         assert_eq!(result.rules_evaluated, 1);
+        Ok(())
     }
 }

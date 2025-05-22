@@ -6,7 +6,7 @@ use regex::Regex;
 use once_cell::sync::Lazy;
 use crate::pattern::security::safe_regex_compile;
 
-/// Global regex for whitespace collapsing
+/// Global regex for whitespace collapsing (compiled once, reused many times for optimal performance)
 static WHITESPACE_COLLAPSE: Lazy<Regex> = Lazy::new(|| {
     safe_regex_compile(r"\s+").expect("Invalid whitespace regex")
 });
