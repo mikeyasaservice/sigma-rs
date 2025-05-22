@@ -35,8 +35,8 @@ pub struct RuleSet {
 /// A compiled rule with its detection tree
 #[derive(Debug)]
 struct CompiledRule {
-    /// The original rule
-    rule: Rule,
+    /// The original rule (wrapped in Arc for efficient sharing)
+    rule: Arc<Rule>,
     /// The compiled detection tree
     tree: Arc<Tree>,
     /// Whether this rule is enabled
@@ -47,12 +47,13 @@ struct CompiledRule {
 #[derive(Debug, Clone)]
 pub struct RuleSetMetadata {
     /// Total number of rules
-    total_rules: usize,
+    pub total_rules: usize,
     /// Number of enabled rules
-    enabled_rules: usize,
+    pub enabled_rules: usize,
     /// Number of rules that failed to compile
-    failed_rules: usize,
+    pub failed_rules: usize,
     /// When the ruleset was loaded
+    #[allow(dead_code)]
     loaded_at: std::time::Instant,
 }
 
@@ -156,7 +157,15 @@ impl RuleSet {
     async fn load_rule_file(&mut self, path: &Path) -> SigmaResult<()> {
         debug!("Loading rule from {}", path.display());
         
-        let contents = tokio::fs::read(path).await
+        // Use streaming read with size limit to prevent resource exhaustion
+        const MAX_RULE_SIZE: u64 = 1024 * 1024; // 1MB limit per rule file
+        
+        let file = tokio::fs::File::open(path).await
+            .map_err(|e| SigmaError::Parse(format!("Failed to open file {}: {}", path.display(), e)))?;
+        
+        let mut contents = Vec::new();
+        use tokio::io::AsyncReadExt;
+        file.take(MAX_RULE_SIZE).read_to_end(&mut contents).await
             .map_err(|e| SigmaError::Parse(format!("Failed to read file {}: {}", path.display(), e)))?;
         
         let rule = rule_from_yaml(&contents)?;
@@ -167,8 +176,11 @@ impl RuleSet {
 
     /// Add a rule to the ruleset
     pub async fn add_rule(&mut self, rule: Rule) -> SigmaResult<()> {
-        // Create a rule handle
-        let rule_handle = RuleHandle::new(rule.clone(), std::path::PathBuf::from("ruleset"));
+        // Wrap rule in Arc for efficient sharing
+        let rule_arc = Arc::new(rule);
+        
+        // Create a rule handle with clone for tree building
+        let rule_handle = RuleHandle::new((*rule_arc).clone(), std::path::PathBuf::from("ruleset"));
         
         // Build the detection tree
         let tree = build_tree(rule_handle).await
@@ -176,15 +188,15 @@ impl RuleSet {
         
         // Store the compiled rule
         let index = self.rules.len();
-        let rule_id = if rule.id.is_empty() {
+        let rule_id = if rule_arc.id.is_empty() {
             format!("rule_{}", index)
         } else {
-            rule.id.clone()
+            rule_arc.id.clone()
         };
         
         self.rule_index.insert(rule_id.clone(), index);
         self.rules.push(CompiledRule {
-            rule,
+            rule: rule_arc,
             tree: Arc::new(tree),
             enabled: true,
         });
@@ -211,18 +223,21 @@ impl RuleSet {
         let mut matches = Vec::new();
         let mut rules_evaluated = 0;
 
+        // Wrap event in Arc for efficient sharing across tasks
+        let event_arc = Arc::new(event.clone());
+
         // Evaluate rules in parallel for better performance
         let tasks: Vec<_> = self.rules
             .iter()
             .filter(|r| r.enabled)
             .map(|compiled_rule| {
-                let event = event.clone();
-                let tree = compiled_rule.tree.clone();
-                let rule = compiled_rule.rule.clone();
+                let event_ref = Arc::clone(&event_arc);
+                let tree = Arc::clone(&compiled_rule.tree);
+                let rule = Arc::clone(&compiled_rule.rule);
                 
                 tokio::spawn(async move {
                     let rule_start = std::time::Instant::now();
-                    let (matched, applicable) = tree.match_event(&event).await;
+                    let (matched, applicable) = tree.match_event(&*event_ref).await;
                     let evaluation_time = rule_start.elapsed();
                     
                     let match_result = MatchResult {
@@ -443,6 +458,45 @@ mod tests {
         
         let result = concurrent.evaluate(&event).await?;
         assert_eq!(result.rules_evaluated, 1);
+        Ok(())
+    }
+    
+    #[tokio::test]
+    async fn test_file_size_limit() -> SigmaResult<()> {
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+        
+        let mut ruleset = RuleSet::new();
+        
+        // Create a temporary file that exceeds the 1MB limit
+        let mut temp_file = NamedTempFile::new().unwrap();
+        
+        // Write 2MB of data (exceeds 1MB limit)
+        let large_content = "a".repeat(2 * 1024 * 1024);
+        temp_file.write_all(large_content.as_bytes()).unwrap();
+        temp_file.flush().unwrap();
+        
+        // Loading should fail due to size limit
+        let result = ruleset.load_rule_file(temp_file.path()).await;
+        assert!(result.is_err());
+        
+        // Create a small valid rule file
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let rule_yaml = r#"
+title: Small Test Rule
+id: small-test-1
+detection:
+    selection:
+        EventID: 1
+    condition: selection
+"#;
+        temp_file.write_all(rule_yaml.as_bytes()).unwrap();
+        temp_file.flush().unwrap();
+        
+        // Loading should succeed for small files
+        let result = ruleset.load_rule_file(temp_file.path()).await;
+        assert!(result.is_ok());
+        
         Ok(())
     }
 }
