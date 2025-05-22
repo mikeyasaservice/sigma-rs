@@ -22,7 +22,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Main Redpanda consumer
 pub struct RedpandaConsumer<P: MessageProcessor> {
@@ -133,10 +133,10 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
     
     /// Run the consumer
     pub async fn run(self) -> ConsumerResult<()> {
-        info!("Starting Redpanda consumer");
+        info!("Starting Redpanda consumer with {} workers", self.config.num_workers);
         
         // Create processing channel
-        let (task_tx, task_rx) = mpsc::channel::<ProcessingTask>(self.config.channel_buffer_size);
+        let (task_tx, main_task_rx) = mpsc::channel::<ProcessingTask>(self.config.channel_buffer_size);
         
         // Start background tasks
         let mut handles = vec![];
@@ -145,10 +145,9 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         let consumer_handle = self.spawn_consumer_loop(task_tx.clone());
         handles.push(consumer_handle);
         
-        // Start processor workers - only one worker for now with mpsc
-        // TODO: Use broadcast channel for multiple workers
-        let processor_handle = self.spawn_processor_worker(0, task_rx);
-        handles.push(processor_handle);
+        // Start worker distributor and processor workers
+        let worker_handles = self.spawn_worker_pool(main_task_rx).await;
+        handles.extend(worker_handles);
         
         // Start metrics reporter
         let metrics_handle = self.spawn_metrics_reporter();
@@ -275,6 +274,80 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         })
     }
     
+    /// Spawn worker pool with distributor
+    async fn spawn_worker_pool(&self, main_task_rx: mpsc::Receiver<ProcessingTask>) -> Vec<JoinHandle<()>> {
+        let mut handles = vec![];
+        
+        if self.config.num_workers == 1 {
+            // Single worker - direct connection for efficiency
+            let worker_handle = self.spawn_processor_worker(0, main_task_rx);
+            handles.push(worker_handle);
+        } else {
+            // Multiple workers - use distributor pattern
+            let worker_channels: Vec<_> = (0..self.config.num_workers)
+                .map(|_| mpsc::channel::<ProcessingTask>(self.config.channel_buffer_size / self.config.num_workers))
+                .collect();
+            
+            // Spawn distributor task
+            let distributor_handle = self.spawn_distributor_task(main_task_rx, worker_channels.iter().map(|(tx, _)| tx.clone()).collect());
+            handles.push(distributor_handle);
+            
+            // Spawn worker tasks
+            for (worker_id, (_, rx)) in worker_channels.into_iter().enumerate() {
+                let worker_handle = self.spawn_processor_worker(worker_id, rx);
+                handles.push(worker_handle);
+            }
+        }
+        
+        handles
+    }
+    
+    /// Spawn distributor task that round-robin distributes work
+    fn spawn_distributor_task(
+        &self,
+        mut main_rx: mpsc::Receiver<ProcessingTask>,
+        worker_senders: Vec<mpsc::Sender<ProcessingTask>>,
+    ) -> JoinHandle<()> {
+        let shutdown_state = self.shutdown_state.clone();
+        
+        tokio::spawn(async move {
+            info!("Distributor task started with {} workers", worker_senders.len());
+            let mut current_worker = 0;
+            
+            while let Some(mut task) = main_rx.recv().await {
+                // Try to distribute to workers, starting with current worker
+                let mut sent = false;
+                
+                for attempt in 0..worker_senders.len() {
+                    let worker_idx = (current_worker + attempt) % worker_senders.len();
+                    
+                    match worker_senders[worker_idx].send(task).await {
+                        Ok(()) => {
+                            sent = true;
+                            break;
+                        }
+                        Err(send_error) => {
+                            if attempt == 0 {
+                                warn!("Worker {} channel closed, attempting redistribution", worker_idx);
+                            }
+                            task = send_error.0; // Extract the task from the SendError
+                        }
+                    }
+                }
+                
+                if !sent {
+                    error!("Failed to distribute task to any worker");
+                    break;
+                }
+                
+                // Move to next worker
+                current_worker = (current_worker + 1) % worker_senders.len();
+            }
+            
+            info!("Distributor task finished");
+        })
+    }
+    
     /// Spawn a processor worker
     fn spawn_processor_worker(
         &self,
@@ -292,72 +365,285 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         tokio::spawn(async move {
             info!("Processor worker {} started", worker_id);
             
-            while let Some(mut task) = task_rx.recv().await {
-                // Track inflight message
-                shutdown_state.add_inflight_message().await;
-                
-                // Acquire backpressure permit
-                let _permit = backpressure.acquire().await;
-                
-                // Process message with retry
-                let result = process_message_with_retry(
-                    processor.as_ref(),
-                    &task.message,
-                    &config,
-                    &mut task.attempt,
+            if config.enable_batching {
+                // Batch processing mode
+                Self::run_batch_processor(
+                    worker_id,
+                    task_rx,
+                    processor,
+                    metrics,
+                    offset_manager,
+                    backpressure,
+                    config,
+                    dlq_producer,
+                    shutdown_state,
                 ).await;
-                
-                let processing_duration = task.start_time.elapsed();
-                
-                match result {
-                    Ok(()) => {
-                        metrics.increment_processed();
-                        processor.on_success(&task.message).await;
-                        
-                        // Mark offset for commit
-                        offset_manager.mark_offset(
-                            task.message.topic().to_string(),
-                            task.message.partition(),
-                            task.message.offset(),
-                        ).await;
-                        
-                        // Record success in backpressure controller
-                        backpressure.record_success(processing_duration).await;
-                    }
-                    Err(e) => {
-                        metrics.increment_failed();
-                        processor.on_failure(&e, &task.message).await;
-                        
-                        // Send to DLQ if configured and max retries exceeded
-                        if task.attempt >= config.dlq_after_retries {
-                            if let Some(dlq) = &dlq_producer {
-                                if let Err(e) = dlq.send_message(&task.message, &e.to_string(), task.attempt).await {
-                                    error!("Failed to send to DLQ: {}", e);
-                                } else {
-                                    metrics.increment_dlq();
-                                }
+            } else {
+                // Single message processing mode
+                Self::run_single_processor(
+                    worker_id,
+                    task_rx,
+                    processor,
+                    metrics,
+                    offset_manager,
+                    backpressure,
+                    config,
+                    dlq_producer,
+                    shutdown_state,
+                ).await;
+            }
+        })
+    }
+    
+    /// Run batch processor
+    async fn run_batch_processor(
+        worker_id: usize,
+        mut task_rx: mpsc::Receiver<ProcessingTask>,
+        processor: Arc<P>,
+        metrics: Arc<ConsumerMetrics>,
+        offset_manager: Arc<OffsetManager>,
+        backpressure: Arc<BackpressureController>,
+        config: ConsumerConfig,
+        dlq_producer: Option<Arc<crate::consumer::dlq::DlqProducer>>,
+        shutdown_state: Arc<crate::consumer::shutdown::ShutdownState>,
+    ) {
+        let mut batch = Vec::with_capacity(config.batch_size);
+        let mut batch_timer = tokio::time::interval(config.batch_timeout);
+        batch_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        
+        loop {
+            tokio::select! {
+                // Receive new task
+                task_option = task_rx.recv() => {
+                    match task_option {
+                        Some(task) => {
+                            batch.push(task);
+                            
+                            // Process batch if it's full
+                            if batch.len() >= config.batch_size {
+                                Self::process_batch(
+                                    &batch,
+                                    &processor,
+                                    &metrics,
+                                    &offset_manager,
+                                    &backpressure,
+                                    &config,
+                                    &dlq_producer,
+                                    &shutdown_state,
+                                ).await;
+                                batch.clear();
                             }
                         }
-                        
-                        // Record failure in backpressure controller
-                        backpressure.record_failure().await;
+                        None => {
+                            // Channel closed, process remaining batch and exit
+                            if !batch.is_empty() {
+                                Self::process_batch(
+                                    &batch,
+                                    &processor,
+                                    &metrics,
+                                    &offset_manager,
+                                    &backpressure,
+                                    &config,
+                                    &dlq_producer,
+                                    &shutdown_state,
+                                ).await;
+                            }
+                            break;
+                        }
                     }
                 }
                 
-                // Record processing duration
-                metrics.record_processing_duration(processing_duration);
-                
-                // Update message size estimate (if we have payload size)
-                if let Some(payload) = task.message.payload() {
-                    backpressure.update_avg_message_size(payload.len());
+                // Batch timeout - process current batch
+                _ = batch_timer.tick() => {
+                    if !batch.is_empty() {
+                        Self::process_batch(
+                            &batch,
+                            &processor,
+                            &metrics,
+                            &offset_manager,
+                            &backpressure,
+                            &config,
+                            &dlq_producer,
+                            &shutdown_state,
+                        ).await;
+                        batch.clear();
+                    }
                 }
+            }
+        }
+        
+        info!("Batch processor worker {} finished", worker_id);
+    }
+    
+    /// Run single message processor
+    async fn run_single_processor(
+        worker_id: usize,
+        mut task_rx: mpsc::Receiver<ProcessingTask>,
+        processor: Arc<P>,
+        metrics: Arc<ConsumerMetrics>,
+        offset_manager: Arc<OffsetManager>,
+        backpressure: Arc<BackpressureController>,
+        config: ConsumerConfig,
+        dlq_producer: Option<Arc<crate::consumer::dlq::DlqProducer>>,
+        shutdown_state: Arc<crate::consumer::shutdown::ShutdownState>,
+    ) {
+        while let Some(mut task) = task_rx.recv().await {
+            // Track inflight message
+            shutdown_state.add_inflight_message().await;
                 
-                // Remove inflight message
-                shutdown_state.remove_inflight_message().await;
+            // Acquire backpressure permit
+            let _permit = backpressure.acquire().await;
+            
+            // Process message with retry
+            let result = process_message_with_retry(
+                processor.as_ref(),
+                &task.message,
+                &config,
+                &mut task.attempt,
+            ).await;
+            
+            let processing_duration = task.start_time.elapsed();
+            
+            match result {
+                Ok(()) => {
+                    metrics.increment_processed();
+                    processor.on_success(&task.message).await;
+                    
+                    // Mark offset for commit
+                    offset_manager.mark_offset(
+                        task.message.topic().to_string(),
+                        task.message.partition(),
+                        task.message.offset(),
+                    ).await;
+                    
+                    // Record success in backpressure controller
+                    backpressure.record_success(processing_duration).await;
+                }
+                Err(e) => {
+                    metrics.increment_failed();
+                    processor.on_failure(&e, &task.message).await;
+                    
+                    // Send to DLQ if configured and max retries exceeded
+                    if task.attempt >= config.dlq_after_retries {
+                        if let Some(dlq) = &dlq_producer {
+                            if let Err(e) = dlq.send_message(&task.message, &e.to_string(), task.attempt).await {
+                                error!("Failed to send to DLQ: {}", e);
+                            } else {
+                                metrics.increment_dlq();
+                            }
+                        }
+                    }
+                    
+                    // Record failure in backpressure controller
+                    backpressure.record_failure().await;
+                }
             }
             
-            info!("Processor worker {} stopped", worker_id);
-        })
+            // Record processing duration
+            metrics.record_processing_duration(processing_duration);
+            
+            // Update message size estimate (if we have payload size)
+            if let Some(payload) = task.message.payload() {
+                backpressure.update_avg_message_size(payload.len());
+            }
+            
+            // Remove inflight message
+            shutdown_state.remove_inflight_message().await;
+        }
+        
+        info!("Single processor worker {} finished", worker_id);
+    }
+    
+    /// Process a batch of messages
+    async fn process_batch(
+        batch: &[ProcessingTask],
+        processor: &Arc<P>,
+        metrics: &Arc<ConsumerMetrics>,
+        offset_manager: &Arc<OffsetManager>,
+        backpressure: &Arc<BackpressureController>,
+        config: &ConsumerConfig,
+        dlq_producer: &Option<Arc<crate::consumer::dlq::DlqProducer>>,
+        shutdown_state: &Arc<crate::consumer::shutdown::ShutdownState>,
+    ) {
+        if batch.is_empty() {
+            return;
+        }
+        
+        debug!("Processing batch of {} messages", batch.len());
+        let batch_start = std::time::Instant::now();
+        
+        // Track inflight messages
+        for _ in batch {
+            shutdown_state.add_inflight_message().await;
+        }
+        
+        // Acquire backpressure permits for the entire batch
+        let mut permits = Vec::with_capacity(batch.len());
+        for _ in batch {
+            let permit = backpressure.acquire().await;
+            permits.push(permit);
+        }
+        
+        // Process each message in the batch
+        for task in batch {
+            let mut attempt = task.attempt;
+            let result = process_message_with_retry(
+                processor.as_ref(),
+                &task.message,
+                config,
+                &mut attempt,
+            ).await;
+            
+            let processing_duration = task.start_time.elapsed();
+            
+            match result {
+                Ok(()) => {
+                    metrics.increment_processed();
+                    processor.on_success(&task.message).await;
+                    
+                    // Mark offset for commit
+                    offset_manager.mark_offset(
+                        task.message.topic().to_string(),
+                        task.message.partition(),
+                        task.message.offset(),
+                    ).await;
+                    
+                    // Record success in backpressure controller
+                    backpressure.record_success(processing_duration).await;
+                }
+                Err(e) => {
+                    metrics.increment_failed();
+                    processor.on_failure(&e, &task.message).await;
+                    
+                    // Send to DLQ if configured and max retries exceeded
+                    if attempt >= config.dlq_after_retries {
+                        if let Some(dlq) = dlq_producer {
+                            if let Err(e) = dlq.send_message(&task.message, &e.to_string(), attempt).await {
+                                error!("Failed to send to DLQ: {}", e);
+                            } else {
+                                metrics.increment_dlq();
+                            }
+                        }
+                    }
+                    
+                    // Record failure in backpressure controller
+                    backpressure.record_failure().await;
+                }
+            }
+            
+            // Record processing duration
+            metrics.record_processing_duration(processing_duration);
+            
+            // Update message size estimate (if we have payload size)
+            if let Some(payload) = task.message.payload() {
+                backpressure.update_avg_message_size(payload.len());
+            }
+            
+            // Remove inflight message
+            shutdown_state.remove_inflight_message().await;
+        }
+        
+        debug!("Batch of {} messages processed in {:?}", batch.len(), batch_start.elapsed());
     }
     
     /// Spawn metrics reporter

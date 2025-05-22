@@ -193,10 +193,9 @@ fn new_branch(
             
             Token::KeywordOr => {
                 // Finalize current AND group and start new one
-                let and_node = NodeSimpleAnd::new(and_branches.clone()).reduce()
+                let and_node = NodeSimpleAnd::new(std::mem::take(&mut and_branches)).reduce()
                     .map_err(|e| ParseError::parser_error(e.to_string()))?;
                 or_branches.push(and_node);
-                and_branches.clear();
             }
             
             Token::KeywordNot => {
