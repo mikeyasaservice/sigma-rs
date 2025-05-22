@@ -1,4 +1,5 @@
 use super::{Branch, Event, FieldRule, MatchResult};
+use crate::error::SigmaError;
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -107,17 +108,19 @@ impl NodeSimpleAnd {
     }
 
     /// Reduce to more efficient representation if possible
-    pub fn reduce(self) -> Arc<dyn Branch> {
+    pub fn reduce(self) -> Result<Arc<dyn Branch>, SigmaError> {
         match self.branches.len() {
-            0 => panic!("Cannot reduce empty AND node"),
-            1 => self.branches.into_iter().next().unwrap(),
+            0 => Err(SigmaError::InvalidMatcher(
+                "Cannot reduce empty AND node - this indicates a parser bug".to_string()
+            )),
+            1 => Ok(self.branches.into_iter().next().expect("Length verified to be 1")),
             2 => {
                 let mut iter = self.branches.into_iter();
-                let left = iter.next().unwrap();
-                let right = iter.next().unwrap();
-                Arc::new(NodeAnd::new(left, right))
+                let left = iter.next().expect("Length verified to be 2");
+                let right = iter.next().expect("Length verified to be 2");
+                Ok(Arc::new(NodeAnd::new(left, right)))
             }
-            _ => Arc::new(self),
+            _ => Ok(Arc::new(self)),
         }
     }
 }
@@ -155,17 +158,19 @@ impl NodeSimpleOr {
     }
 
     /// Reduce to more efficient representation if possible
-    pub fn reduce(self) -> Arc<dyn Branch> {
+    pub fn reduce(self) -> Result<Arc<dyn Branch>, SigmaError> {
         match self.branches.len() {
-            0 => panic!("Cannot reduce empty OR node"),
-            1 => self.branches.into_iter().next().unwrap(),
+            0 => Err(SigmaError::InvalidMatcher(
+                "Cannot reduce empty OR node - this indicates a parser bug".to_string()
+            )),
+            1 => Ok(self.branches.into_iter().next().expect("Length verified to be 1")),
             2 => {
                 let mut iter = self.branches.into_iter();
-                let left = iter.next().unwrap();
-                let right = iter.next().unwrap();
-                Arc::new(NodeOr::new(left, right))
+                let left = iter.next().expect("Length verified to be 2");
+                let right = iter.next().expect("Length verified to be 2");
+                Ok(Arc::new(NodeOr::new(left, right)))
             }
-            _ => Arc::new(self),
+            _ => Ok(Arc::new(self)),
         }
     }
 }
@@ -203,5 +208,113 @@ pub fn new_node_not_if_negated(branch: Arc<dyn Branch>, negated: bool) -> Arc<dy
         Arc::new(NodeNot::new(branch))
     } else {
         branch
+    }
+}
+
+/// Identifier node that wraps a field rule
+#[derive(Debug, Clone)]
+pub struct Identifier {
+    field_rule: FieldRule,
+}
+
+impl Identifier {
+    pub fn new(field: String, pattern: super::FieldPattern) -> Self {
+        Self {
+            field_rule: FieldRule::new(field, pattern),
+        }
+    }
+    
+    pub fn from_rule(rule: FieldRule) -> Self {
+        Self { field_rule: rule }
+    }
+}
+
+#[async_trait]
+impl Branch for Identifier {
+    async fn matches(&self, event: &dyn Event) -> MatchResult {
+        self.field_rule.matches(event).await
+    }
+    
+    fn describe(&self) -> String {
+        self.field_rule.describe()
+    }
+}
+
+/// Comparison operators for aggregation conditions
+#[derive(Debug, Clone, PartialEq)]
+pub enum ComparisonOp {
+    GreaterThan,
+    GreaterOrEqual,
+    LessThan,
+    LessOrEqual,
+    Equal,
+    NotEqual,
+}
+
+impl ComparisonOp {
+    pub fn evaluate(&self, value: f64, threshold: f64) -> bool {
+        match self {
+            ComparisonOp::GreaterThan => value > threshold,
+            ComparisonOp::GreaterOrEqual => value >= threshold,
+            ComparisonOp::LessThan => value < threshold,
+            ComparisonOp::LessOrEqual => value <= threshold,
+            ComparisonOp::Equal => (value - threshold).abs() < f64::EPSILON,
+            ComparisonOp::NotEqual => (value - threshold).abs() >= f64::EPSILON,
+        }
+    }
+}
+
+/// Node for aggregation operations
+#[derive(Debug, Clone)]
+pub struct NodeAggregation {
+    pub function: crate::aggregation::AggregationFunction,
+    pub comparison: ComparisonOp,
+    pub threshold: f64,
+    pub by_field: Option<String>,
+    pub time_window: Option<std::time::Duration>,
+}
+
+impl NodeAggregation {
+    pub fn new(
+        function: crate::aggregation::AggregationFunction,
+        comparison: ComparisonOp,
+        threshold: f64,
+        by_field: Option<String>,
+        time_window: Option<std::time::Duration>,
+    ) -> Self {
+        Self {
+            function,
+            comparison,
+            threshold,
+            by_field,
+            time_window,
+        }
+    }
+}
+
+#[async_trait]
+impl Branch for NodeAggregation {
+    async fn matches(&self, event: &dyn Event) -> MatchResult {
+        // Aggregation logic will be implemented by the AggregationEvaluator
+        // This is just a placeholder for the AST node
+        MatchResult::not_matched()
+    }
+
+    fn describe(&self) -> String {
+        format!(
+            "AGGREGATE({:?} {} {} BY {:?} WITHIN {:?})",
+            self.function,
+            match self.comparison {
+                ComparisonOp::GreaterThan => ">",
+                ComparisonOp::GreaterOrEqual => ">=",
+                ComparisonOp::LessThan => "<",
+                ComparisonOp::LessOrEqual => "<=",
+                ComparisonOp::Equal => "==",
+                ComparisonOp::NotEqual => "!=",
+            },
+            self.threshold,
+            self.by_field,
+            self.time_window
+        )
     }
 }

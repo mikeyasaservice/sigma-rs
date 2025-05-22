@@ -1,48 +1,62 @@
 use crate::ast::{Branch, FieldPattern, FieldRule, NodeSimpleAnd, NodeSimpleOr};
-use crate::detection::Detection;
-use crate::lexer::{Item, Lexer};
-use crate::lexer::token::Token;
+use crate::rule::Detection;
+use crate::lexer::Lexer;
+use crate::lexer::token::{Token, Item};
 use crate::parser::validate::valid_token_sequence;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::task;
 
-mod error;
-mod validate;
+pub mod error;
+pub mod validate;
 
 pub use error::ParseError;
 
+/// Maximum number of tokens allowed in a single rule condition
+const MAX_TOKENS: usize = 10_000;
+
 /// Parser for Sigma rules that consumes tokens from lexer and builds AST
+#[derive(Debug)]
 pub struct Parser {
-    lexer: Option<Lexer>,
     tokens: Vec<Item>,
     previous: Option<Item>,
     sigma: Detection,
     condition: String,
     result: Option<Arc<dyn Branch>>,
     no_collapse_ws: bool,
+    max_tokens: usize,
 }
 
 impl Parser {
-    /// Create a new parser with the given lexer and detection configuration
-    pub fn new(lexer: Lexer, sigma: Detection, no_collapse_ws: bool) -> Self {
+    /// Create a new parser with detection configuration
+    pub fn new(sigma: Detection, no_collapse_ws: bool) -> Self {
         let condition = sigma.condition().unwrap_or("").to_string();
         Self {
-            lexer: Some(lexer),
             tokens: Vec::new(),
             previous: None,
             sigma,
             condition,
             result: None,
             no_collapse_ws,
+            max_tokens: MAX_TOKENS,
+        }
+    }
+    
+    /// Create a new parser with custom token limit
+    pub fn new_with_limits(sigma: Detection, no_collapse_ws: bool, max_tokens: usize) -> Self {
+        let condition = sigma.condition().unwrap_or("").to_string();
+        Self {
+            tokens: Vec::new(),
+            previous: None,
+            sigma,
+            condition,
+            result: None,
+            no_collapse_ws,
+            max_tokens,
         }
     }
 
     /// Run the parser, collecting tokens and building the AST
     pub async fn run(&mut self) -> Result<(), ParseError> {
-        if self.lexer.is_none() {
-            return Err(ParseError::LexerNotInitialized);
-        }
-
         // Pass 1: collect tokens and validate sequences
         self.collect().await?;
 
@@ -54,15 +68,19 @@ impl Parser {
 
     /// Collect tokens from lexer and validate sequences
     async fn collect(&mut self) -> Result<(), ParseError> {
-        let lexer = self.lexer.take().ok_or(ParseError::LexerNotInitialized)?;
-        let mut receiver = lexer.scan().await;
-
-        self.previous = Some(Item {
-            token: Token::Begin,
-            value: String::new(),
+        let (lexer, mut rx) = Lexer::new(self.condition.clone());
+        
+        // Start lexer in background
+        let lexer_handle = task::spawn(async move {
+            lexer.scan().await
         });
 
-        while let Some(item) = receiver.recv().await {
+        self.previous = Some(Item::new(
+            Token::Identifier, // Placeholder, will be ignored
+            String::from("<begin>"),
+        ));
+
+        while let Some(item) = rx.recv().await {
             // Check for unsupported tokens
             if item.token == Token::Unsupported {
                 return Err(ParseError::unsupported_token(&item.value));
@@ -70,9 +88,10 @@ impl Parser {
 
             // Validate token sequence
             if let Some(prev) = &self.previous {
-                if prev.token != Token::Begin
-                    && !valid_token_sequence(prev.token, item.token)
-                {
+                // Special handling for begin state
+                let is_begin = prev.value == "<begin>";
+                
+                if !is_begin && !valid_token_sequence(prev.token, item.token) {
                     return Err(ParseError::invalid_sequence(
                         prev.clone(),
                         item.clone(),
@@ -82,16 +101,27 @@ impl Parser {
             }
 
             // Don't collect EOF token
-            if item.token != Token::Eof {
+            if item.token != Token::LitEof {
+                // Check token limit before adding
+                if self.tokens.len() >= self.max_tokens {
+                    return Err(ParseError::TokenLimitExceeded {
+                        current: self.tokens.len(),
+                        limit: self.max_tokens,
+                    });
+                }
                 self.tokens.push(item.clone());
             }
 
             self.previous = Some(item);
         }
 
+        // Wait for lexer to complete
+        lexer_handle.await.map_err(|e| ParseError::parser_error(e.to_string()))?
+            .map_err(|e| ParseError::parser_error(e.to_string()))?;
+
         // Validate final token
         if let Some(last) = &self.previous {
-            if last.token != Token::Eof {
+            if last.token != Token::LitEof {
                 return Err(ParseError::incomplete_sequence(
                     self.condition.clone(),
                     self.tokens.clone(),
@@ -145,6 +175,7 @@ fn new_branch(
                 let value = detection.get(&item.value)
                     .ok_or_else(|| ParseError::missing_condition_item(&item.value))?;
                     
+                
                 // Create a field rule from the identifier and value
                 let rule = create_rule_from_ident(&item.value, value, no_collapse_ws)?;
                 let branch = if negated {
@@ -162,7 +193,8 @@ fn new_branch(
             
             Token::KeywordOr => {
                 // Finalize current AND group and start new one
-                let and_node = NodeSimpleAnd::new(and_branches.clone()).reduce();
+                let and_node = NodeSimpleAnd::new(and_branches.clone()).reduce()
+                    .map_err(|e| ParseError::parser_error(e.to_string()))?;
                 or_branches.push(and_node);
                 and_branches.clear();
             }
@@ -171,7 +203,7 @@ fn new_branch(
                 negated = true;
             }
             
-            Token::SeparatorLeftParen => {
+            Token::SepLpar => {
                 // Extract grouped tokens and recursively parse
                 let group_tokens = extract_group(&mut token_iter)?;
                 let branch = new_branch(detection, &group_tokens, depth + 1, no_collapse_ws)?;
@@ -184,20 +216,20 @@ fn new_branch(
                 negated = false;
             }
             
-            Token::StmtAll => {
-                wildcard = Some(Token::StmtAll);
+            Token::StmtAllOf => {
+                wildcard = Some(Token::StmtAllOf);
             }
             
-            Token::StmtOne => {
-                wildcard = Some(Token::StmtOne);
+            Token::StmtOneOf => {
+                wildcard = Some(Token::StmtOneOf);
             }
             
             Token::IdentifierAll => {
                 // Handle "all of them" or "1 of them"
                 let branches = extract_all_to_rules(detection, no_collapse_ws)?;
                 let node: Arc<dyn Branch> = match wildcard {
-                    Some(Token::StmtAll) => Arc::new(NodeSimpleAnd::new(branches)),
-                    Some(Token::StmtOne) => Arc::new(NodeSimpleOr::new(branches)),
+                    Some(Token::StmtAllOf) => Arc::new(NodeSimpleAnd::new(branches)),
+                    Some(Token::StmtOneOf) => Arc::new(NodeSimpleOr::new(branches)),
                     _ => return Err(ParseError::parser_error("Invalid wildcard context")),
                 };
                 let final_node = if negated {
@@ -217,8 +249,8 @@ fn new_branch(
                     
                 let matching_branches = extract_wildcard_idents(detection, &pattern, no_collapse_ws)?;
                 let node: Arc<dyn Branch> = match wildcard {
-                    Some(Token::StmtAll) => Arc::new(NodeSimpleAnd::new(matching_branches)),
-                    Some(Token::StmtOne) => Arc::new(NodeSimpleOr::new(matching_branches)),
+                    Some(Token::StmtAllOf) => Arc::new(NodeSimpleAnd::new(matching_branches)),
+                    Some(Token::StmtOneOf) => Arc::new(NodeSimpleOr::new(matching_branches)),
                     _ => return Err(ParseError::parser_error("Invalid wildcard context")),
                 };
                 let final_node = if negated {
@@ -239,12 +271,18 @@ fn new_branch(
 
     // Finalize any remaining AND branches
     if !and_branches.is_empty() {
-        let and_node = NodeSimpleAnd::new(and_branches).reduce();
+        let and_node = NodeSimpleAnd::new(and_branches).reduce()
+            .map_err(|e| ParseError::parser_error(e.to_string()))?;
         or_branches.push(and_node);
     }
 
     // Return final OR node
-    Ok(NodeSimpleOr::new(or_branches).reduce())
+    if or_branches.is_empty() {
+        return Err(ParseError::parser_error("No valid branches found"));
+    }
+    
+    NodeSimpleOr::new(or_branches).reduce()
+        .map_err(|e| ParseError::parser_error(e.to_string()))
 }
 
 /// Extract tokens within a group (parentheses)
@@ -255,14 +293,14 @@ where
     let mut group = Vec::new();
     let mut balance = 1;
 
-    while let Some(item) = iter.next() {
+    for item in iter {
         if balance > 0 {
             group.push(item.clone());
         }
 
         match item.token {
-            Token::SeparatorLeftParen => balance += 1,
-            Token::SeparatorRightParen => {
+            Token::SepLpar => balance += 1,
+            Token::SepRpar => {
                 balance -= 1;
                 if balance == 0 {
                     // Remove the closing paren from the group
@@ -277,34 +315,269 @@ where
     Err(ParseError::parser_error("Unbalanced parentheses"))
 }
 
+/// Parse field modifier from field string (e.g., "CommandLine|contains" -> ("CommandLine", Some(TextPatternModifier::Contains)))
+fn parse_field_modifier(field: &str) -> (&str, Option<crate::pattern::TextPatternModifier>) {
+    use crate::pattern::TextPatternModifier;
+    
+    if let Some(delimiter_pos) = field.find('|') {
+        let field_name = &field[..delimiter_pos];
+        let modifier_str = &field[delimiter_pos + 1..];
+        
+        let modifier = match modifier_str.to_lowercase().as_str() {
+            "contains" => Some(TextPatternModifier::Contains),
+            "prefix" | "startswith" => Some(TextPatternModifier::Prefix),
+            "suffix" | "endswith" => Some(TextPatternModifier::Suffix),
+            "all" => Some(TextPatternModifier::All),
+            "re" | "regex" => Some(TextPatternModifier::Regex),
+            "keyword" => Some(TextPatternModifier::Keyword),
+            _ => None, // Unknown modifier, treat as none
+        };
+        
+        (field_name, modifier)
+    } else {
+        (field, None)
+    }
+}
+
 /// Create a field rule from an identifier and value
 fn create_rule_from_ident(
     field: &str,
     value: &serde_json::Value,
     no_collapse_ws: bool,
 ) -> Result<Arc<dyn Branch>, ParseError> {
-    // TODO: Implement proper rule creation from JSON value
-    // For now, create a simple exact match rule
-    let pattern = match value {
-        serde_json::Value::String(s) => FieldPattern::Exact(s.clone()),
+    use crate::pattern::{new_string_matcher, new_num_matcher, TextPatternModifier};
+    
+    // Parse field and modifier
+    let (field_name, modifier) = parse_field_modifier(field);
+    
+    // Handle different value types
+    match value {
+        serde_json::Value::String(s) => {
+            let processed = process_string_value(s, no_collapse_ws);
+            let final_modifier = modifier.unwrap_or_else(|| {
+                if processed.contains('*') || processed.contains('?') {
+                    TextPatternModifier::None  // Will be handled as glob
+                } else {
+                    TextPatternModifier::None  // Exact match
+                }
+            });
+            
+            let matcher = new_string_matcher(
+                final_modifier,
+                false,  // lowercase
+                false,  // all
+                no_collapse_ws,
+                vec![processed.clone()],
+            ).map_err(|e| ParseError::parser_error(&e))?;
+            
+            Ok(Arc::new(FieldRule::new(
+                field_name.to_string(),
+                FieldPattern::String {
+                    matcher: Arc::from(matcher),
+                    pattern_desc: processed,
+                },
+            )))
+        }
+        serde_json::Value::Number(n) => {
+            if let Some(num) = n.as_i64() {
+                let matcher = new_num_matcher(vec![num])
+                    .map_err(|e| ParseError::parser_error(&e))?;
+                
+                Ok(Arc::new(FieldRule::new(
+                    field_name.to_string(),
+                    FieldPattern::Numeric {
+                        matcher: Arc::from(matcher),
+                        pattern_desc: n.to_string(),
+                    },
+                )))
+            } else {
+                // Fall back to string matching for floats
+                let matcher = new_string_matcher(
+                    TextPatternModifier::None,
+                    false,  // lowercase
+                    false,  // all
+                    no_collapse_ws,
+                    vec![n.to_string()],
+                ).map_err(|e| ParseError::parser_error(&e))?;
+                
+                Ok(Arc::new(FieldRule::new(
+                    field_name.to_string(),
+                    FieldPattern::String {
+                        matcher: Arc::from(matcher),
+                        pattern_desc: n.to_string(),
+                    },
+                )))
+            }
+        }
+        serde_json::Value::Bool(b) => {
+            let str_val = b.to_string();
+            let matcher = new_string_matcher(
+                TextPatternModifier::None,
+                false,  // lowercase
+                false,  // all
+                no_collapse_ws,
+                vec![str_val.clone()],
+            ).map_err(|e| ParseError::parser_error(&e))?;
+            
+            Ok(Arc::new(FieldRule::new(
+                field_name.to_string(),
+                FieldPattern::String {
+                    matcher: Arc::from(matcher),
+                    pattern_desc: str_val,
+                },
+            )))
+        }
         serde_json::Value::Array(arr) => {
             // Handle array of values as OR
             let branches: Vec<Arc<dyn Branch>> = arr
                 .iter()
-                .filter_map(|v| v.as_str())
-                .map(|s| {
-                    Arc::new(FieldRule::new(
-                        field.to_string(),
-                        FieldPattern::Exact(s.to_string()),
-                    )) as Arc<dyn Branch>
+                .filter_map(|v| match v {
+                    serde_json::Value::String(s) => {
+                        let processed = process_string_value(s, no_collapse_ws);
+                        let final_modifier = modifier.unwrap_or_else(|| {
+                            if processed.contains('*') || processed.contains('?') {
+                                TextPatternModifier::None  // Will be handled as glob
+                            } else {
+                                TextPatternModifier::None  // Exact match
+                            }
+                        });
+                        
+                        match new_string_matcher(
+                            final_modifier,
+                            false,  // lowercase
+                            false,  // all
+                            no_collapse_ws,
+                            vec![processed.clone()],
+                        ) {
+                            Ok(matcher) => Some(Arc::new(FieldRule::new(
+                                field_name.to_string(),
+                                FieldPattern::String {
+                                    matcher: Arc::from(matcher),
+                                    pattern_desc: processed,
+                                },
+                            )) as Arc<dyn Branch>),
+                            Err(_) => None,
+                        }
+                    }
+                    serde_json::Value::Number(n) => {
+                        if let Some(num) = n.as_i64() {
+                            match new_num_matcher(vec![num]) {
+                                Ok(matcher) => Some(Arc::new(FieldRule::new(
+                                    field_name.to_string(),
+                                    FieldPattern::Numeric {
+                                        matcher: Arc::from(matcher),
+                                        pattern_desc: n.to_string(),
+                                    },
+                                )) as Arc<dyn Branch>),
+                                Err(_) => None,
+                            }
+                        } else {
+                            match new_string_matcher(
+                                TextPatternModifier::None,
+                                false,  // lowercase
+                                false,  // all
+                                no_collapse_ws,
+                                vec![n.to_string()],
+                            ) {
+                                Ok(matcher) => Some(Arc::new(FieldRule::new(
+                                    field_name.to_string(),
+                                    FieldPattern::String {
+                                        matcher: Arc::from(matcher),
+                                        pattern_desc: n.to_string(),
+                                    },
+                                )) as Arc<dyn Branch>),
+                                Err(_) => None,
+                            }
+                        }
+                    }
+                    serde_json::Value::Bool(b) => {
+                        let str_val = b.to_string();
+                        match new_string_matcher(
+                            TextPatternModifier::None,
+                            false,  // lowercase
+                            false,  // all
+                            no_collapse_ws,
+                            vec![str_val.clone()],
+                        ) {
+                            Ok(matcher) => Some(Arc::new(FieldRule::new(
+                                field_name.to_string(),
+                                FieldPattern::String {
+                                    matcher: Arc::from(matcher),
+                                    pattern_desc: str_val,
+                                },
+                            )) as Arc<dyn Branch>),
+                            Err(_) => None,
+                        }
+                    }
+                    _ => None,
                 })
                 .collect();
-            return Ok(Arc::new(NodeSimpleOr::new(branches)));
+            
+            if branches.is_empty() {
+                return Err(ParseError::parser_error("Empty array in field rule"));
+            }
+            
+            NodeSimpleOr::new(branches).reduce()
+                .map_err(|e| ParseError::parser_error(e.to_string()))
         }
-        _ => return Err(ParseError::parser_error("Unsupported value type")),
-    };
+        serde_json::Value::Object(obj) => {
+            // Handle complex field definitions
+            create_complex_field_rule(field, obj, no_collapse_ws)
+        }
+        _ => Err(ParseError::parser_error(&format!(
+            "Unsupported value type for field rule: {} -> {:?}", 
+            field, value
+        ))),
+    }
+}
 
-    Ok(Arc::new(FieldRule::new(field.to_string(), pattern)))
+/// Process string value based on whitespace collapse settings
+fn process_string_value(value: &str, no_collapse_ws: bool) -> String {
+    if no_collapse_ws {
+        value.to_string()
+    } else {
+        // Collapse multiple whitespaces to single space
+        value.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+}
+
+/// Create a complex field rule from an object definition  
+fn create_complex_field_rule(
+    field: &str,
+    obj: &serde_json::Map<String, serde_json::Value>,
+    no_collapse_ws: bool,
+) -> Result<Arc<dyn Branch>, ParseError> {
+    // For object definitions, we create field rules directly from the object's properties
+    // This handles cases like: "selection": { "EventID": 4688, "Process": "cmd.exe" }
+    let mut branches: Vec<Arc<dyn Branch>> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
+    
+    for (key, value) in obj.iter() {
+        // Use the key directly as the field name, not prepended with parent field
+        match create_rule_from_ident(key, value, no_collapse_ws) {
+            Ok(branch) => branches.push(branch),
+            Err(e) => errors.push(format!("Error creating rule for '{}': {}", key, e)),
+        }
+    }
+    
+    if branches.is_empty() {
+        if !errors.is_empty() {
+            return Err(ParseError::parser_error(&format!(
+                "Failed to create complex field rule for '{}'. Errors: {}",
+                field,
+                errors.join("; ")
+            )));
+        }
+        return Err(ParseError::parser_error(&format!(
+            "Invalid complex field rule for '{}': no valid branches created",
+            field
+        )));
+    }
+    
+    // Log warnings if some fields failed but we have at least one valid branch
+    
+    NodeSimpleAnd::new(branches).reduce()
+        .map_err(|e| ParseError::parser_error(e.to_string()))
 }
 
 /// Extract all fields (except condition) and create rules
@@ -313,10 +586,15 @@ fn extract_all_to_rules(
     no_collapse_ws: bool,
 ) -> Result<Vec<Arc<dyn Branch>>, ParseError> {
     let mut rules = Vec::new();
+    let extracted = detection.extract();
     
-    for (key, value) in detection.extract() {
-        let rule = create_rule_from_ident(&key, &value, no_collapse_ws)?;
+    for (key, value) in extracted.iter() {
+        let rule = create_rule_from_ident(key, value, no_collapse_ws)?;
         rules.push(rule);
+    }
+    
+    if rules.is_empty() {
+        return Err(ParseError::parser_error("No detection fields found"));
     }
     
     Ok(rules)
@@ -347,22 +625,122 @@ fn extract_wildcard_idents(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::Lexer;
-    use std::collections::HashMap;
+    use crate::rule::Detection;
 
     #[tokio::test]
     async fn test_basic_parser() {
         let condition = "selection1 and selection2";
         let mut detection = Detection::new();
         detection.insert("condition".to_string(), serde_json::Value::String(condition.to_string()));
-        detection.insert("selection1".to_string(), serde_json::json!({"field1": "value1"}));
-        detection.insert("selection2".to_string(), serde_json::json!({"field2": "value2"}));
+        detection.insert("selection1".to_string(), serde_json::json!("value1"));
+        detection.insert("selection2".to_string(), serde_json::json!("value2"));
 
-        let lexer = Lexer::new(condition.to_string());
-        let mut parser = Parser::new(lexer, detection, false);
+        let mut parser = Parser::new(detection, false);
         
         let result = parser.run().await;
         assert!(result.is_ok());
+        assert!(parser.result().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_parser_with_or() {
+        let condition = "selection1 or selection2";
+        let mut detection = Detection::new();
+        detection.insert("condition".to_string(), serde_json::Value::String(condition.to_string()));
+        detection.insert("selection1".to_string(), serde_json::json!("value1"));
+        detection.insert("selection2".to_string(), serde_json::json!("value2"));
+
+        let mut parser = Parser::new(detection, false);
+        
+        let result = parser.run().await;
+        assert!(result.is_ok());
+        assert!(parser.result().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_parser_with_not() {
+        let condition = "selection1 and not selection2";
+        let mut detection = Detection::new();
+        detection.insert("condition".to_string(), serde_json::Value::String(condition.to_string()));
+        detection.insert("selection1".to_string(), serde_json::json!("value1"));
+        detection.insert("selection2".to_string(), serde_json::json!("value2"));
+
+        let mut parser = Parser::new(detection, false);
+        
+        let result = parser.run().await;
+        assert!(result.is_ok());
+        assert!(parser.result().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_parser_with_parentheses() {
+        let condition = "(selection1 or selection2) and selection3";
+        let mut detection = Detection::new();
+        detection.insert("condition".to_string(), serde_json::Value::String(condition.to_string()));
+        detection.insert("selection1".to_string(), serde_json::json!("value1"));
+        detection.insert("selection2".to_string(), serde_json::json!("value2"));
+        detection.insert("selection3".to_string(), serde_json::json!("value3"));
+
+        let mut parser = Parser::new(detection, false);
+        
+        let result = parser.run().await;
+        assert!(result.is_ok());
+        assert!(parser.result().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_parser_with_object_rules() {
+        let condition = "selection and not exclusion";
+        let mut detection = Detection::new();
+        detection.insert("condition".to_string(), serde_json::Value::String(condition.to_string()));
+        detection.insert("selection".to_string(), serde_json::json!({
+            "EventID": 4688,
+            "Process": "cmd.exe"
+        }));
+        detection.insert("exclusion".to_string(), serde_json::json!({
+            "User": "SYSTEM"
+        }));
+
+        let mut parser = Parser::new(detection, false);
+        
+        let result = parser.run().await;
+        assert!(result.is_ok(), "Parser should handle object rules correctly");
+        assert!(parser.result().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_parser_with_numeric_values() {
+        let condition = "selection";
+        let mut detection = Detection::new();
+        detection.insert("condition".to_string(), serde_json::Value::String(condition.to_string()));
+        detection.insert("selection".to_string(), serde_json::json!({
+            "EventID": 4688,
+            "ProcessId": 1234,
+            "Enabled": true
+        }));
+
+        let mut parser = Parser::new(detection, false);
+        
+        let result = parser.run().await;
+        assert!(result.is_ok(), "Parser should handle numeric and boolean values");
+        assert!(parser.result().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_parser_with_field_modifiers() {
+        let condition = "selection";
+        let mut detection = Detection::new();
+        detection.insert("condition".to_string(), serde_json::Value::String(condition.to_string()));
+        detection.insert("selection".to_string(), serde_json::json!({
+            "CommandLine|contains": "powershell",
+            "ProcessName|prefix": "cmd",
+            "ServiceName|suffix": ".exe"
+        }));
+
+        let mut parser = Parser::new(detection, false);
+        
+        let result = parser.run().await;
+        assert!(result.is_ok(), "Parser should handle field modifiers");
         assert!(parser.result().is_some());
     }
 }
