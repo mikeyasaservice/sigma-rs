@@ -308,7 +308,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         mut main_rx: mpsc::Receiver<ProcessingTask>,
         worker_senders: Vec<mpsc::Sender<ProcessingTask>>,
     ) -> JoinHandle<()> {
-        let shutdown_state = self.shutdown_state.clone();
+        let _shutdown_state = self.shutdown_state.clone();
         
         tokio::spawn(async move {
             info!("Distributor task started with {} workers", worker_senders.len());
@@ -352,7 +352,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
     fn spawn_processor_worker(
         &self,
         worker_id: usize,
-        mut task_rx: mpsc::Receiver<ProcessingTask>,
+        task_rx: mpsc::Receiver<ProcessingTask>,
     ) -> JoinHandle<()> {
         let processor = self.processor.clone();
         let metrics = self.metrics.clone();

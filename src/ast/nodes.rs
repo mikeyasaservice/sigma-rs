@@ -294,7 +294,7 @@ impl NodeAggregation {
 
 #[async_trait]
 impl Branch for NodeAggregation {
-    async fn matches(&self, event: &dyn Event) -> MatchResult {
+    async fn matches(&self, _event: &dyn Event) -> MatchResult {
         // Aggregation logic will be implemented by the AggregationEvaluator
         // This is just a placeholder for the AST node
         MatchResult::not_matched()

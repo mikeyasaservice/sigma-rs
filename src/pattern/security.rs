@@ -5,7 +5,6 @@
 
 use crate::error::SigmaError;
 use regex::Regex;
-use std::time::Duration;
 
 /// Maximum regex compilation time in milliseconds
 const MAX_REGEX_COMPILE_TIME_MS: u64 = 100;

@@ -5,6 +5,7 @@ use crate::lexer::token::{Token, Item};
 use crate::parser::validate::valid_token_sequence;
 use std::sync::Arc;
 use tokio::task;
+use tracing;
 
 pub mod error;
 pub mod validate;
@@ -13,6 +14,9 @@ pub use error::ParseError;
 
 /// Maximum number of tokens allowed in a single rule condition
 const MAX_TOKENS: usize = 10_000;
+
+/// Maximum recursion depth for nested expressions
+const MAX_RECURSION_DEPTH: usize = 100;
 
 /// Parser for Sigma rules that consumes tokens from lexer and builds AST
 #[derive(Debug)]
@@ -163,6 +167,14 @@ fn new_branch(
     depth: usize,
     no_collapse_ws: bool,
 ) -> Result<Arc<dyn Branch>, ParseError> {
+    // Check recursion depth limit
+    if depth > MAX_RECURSION_DEPTH {
+        return Err(ParseError::RecursionLimitExceeded {
+            current: depth,
+            limit: MAX_RECURSION_DEPTH,
+        });
+    }
+
     let mut token_iter = tokens.iter().peekable();
     let mut and_branches: Vec<Arc<dyn Branch>> = Vec::new();
     let mut or_branches: Vec<Arc<dyn Branch>> = Vec::new();
@@ -428,9 +440,11 @@ fn create_rule_from_ident(
         }
         serde_json::Value::Array(arr) => {
             // Handle array of values as OR
-            let branches: Vec<Arc<dyn Branch>> = arr
-                .iter()
-                .filter_map(|v| match v {
+            let mut branches: Vec<Arc<dyn Branch>> = Vec::new();
+            let mut errors: Vec<String> = Vec::new();
+            
+            for v in arr.iter() {
+                match v {
                     serde_json::Value::String(s) => {
                         let processed = process_string_value(s, no_collapse_ws);
                         let final_modifier = modifier.unwrap_or_else(|| {
@@ -448,27 +462,35 @@ fn create_rule_from_ident(
                             no_collapse_ws,
                             vec![processed.clone()],
                         ) {
-                            Ok(matcher) => Some(Arc::new(FieldRule::new(
-                                field_name.to_string(),
-                                FieldPattern::String {
-                                    matcher: Arc::from(matcher),
-                                    pattern_desc: processed,
-                                },
-                            )) as Arc<dyn Branch>),
-                            Err(_) => None,
+                            Ok(matcher) => {
+                                branches.push(Arc::new(FieldRule::new(
+                                    field_name.to_string(),
+                                    FieldPattern::String {
+                                        matcher: Arc::from(matcher),
+                                        pattern_desc: processed,
+                                    },
+                                )) as Arc<dyn Branch>);
+                            }
+                            Err(e) => {
+                                errors.push(format!("Failed to create string matcher for '{}': {}", processed, e));
+                            }
                         }
                     }
                     serde_json::Value::Number(n) => {
                         if let Some(num) = n.as_i64() {
                             match new_num_matcher(vec![num]) {
-                                Ok(matcher) => Some(Arc::new(FieldRule::new(
-                                    field_name.to_string(),
-                                    FieldPattern::Numeric {
-                                        matcher: Arc::from(matcher),
-                                        pattern_desc: n.to_string(),
-                                    },
-                                )) as Arc<dyn Branch>),
-                                Err(_) => None,
+                                Ok(matcher) => {
+                                    branches.push(Arc::new(FieldRule::new(
+                                        field_name.to_string(),
+                                        FieldPattern::Numeric {
+                                            matcher: Arc::from(matcher),
+                                            pattern_desc: n.to_string(),
+                                        },
+                                    )) as Arc<dyn Branch>);
+                                }
+                                Err(e) => {
+                                    errors.push(format!("Failed to create numeric matcher for '{}': {}", n, e));
+                                }
                             }
                         } else {
                             match new_string_matcher(
@@ -478,14 +500,18 @@ fn create_rule_from_ident(
                                 no_collapse_ws,
                                 vec![n.to_string()],
                             ) {
-                                Ok(matcher) => Some(Arc::new(FieldRule::new(
-                                    field_name.to_string(),
-                                    FieldPattern::String {
-                                        matcher: Arc::from(matcher),
-                                        pattern_desc: n.to_string(),
-                                    },
-                                )) as Arc<dyn Branch>),
-                                Err(_) => None,
+                                Ok(matcher) => {
+                                    branches.push(Arc::new(FieldRule::new(
+                                        field_name.to_string(),
+                                        FieldPattern::String {
+                                            matcher: Arc::from(matcher),
+                                            pattern_desc: n.to_string(),
+                                        },
+                                    )) as Arc<dyn Branch>);
+                                }
+                                Err(e) => {
+                                    errors.push(format!("Failed to create string matcher for float '{}': {}", n, e));
+                                }
                             }
                         }
                     }
@@ -498,22 +524,42 @@ fn create_rule_from_ident(
                             no_collapse_ws,
                             vec![str_val.clone()],
                         ) {
-                            Ok(matcher) => Some(Arc::new(FieldRule::new(
-                                field_name.to_string(),
-                                FieldPattern::String {
-                                    matcher: Arc::from(matcher),
-                                    pattern_desc: str_val,
-                                },
-                            )) as Arc<dyn Branch>),
-                            Err(_) => None,
+                            Ok(matcher) => {
+                                branches.push(Arc::new(FieldRule::new(
+                                    field_name.to_string(),
+                                    FieldPattern::String {
+                                        matcher: Arc::from(matcher),
+                                        pattern_desc: str_val,
+                                    },
+                                )) as Arc<dyn Branch>);
+                            }
+                            Err(e) => {
+                                errors.push(format!("Failed to create string matcher for boolean '{}': {}", str_val, e));
+                            }
                         }
                     }
-                    _ => None,
-                })
-                .collect();
+                    _ => {
+                        errors.push(format!("Unsupported value type in array: {:?}", v));
+                    }
+                }
+            }
+            
+            // Log errors but continue processing if we have at least some valid branches
+            if !errors.is_empty() {
+                tracing::warn!(
+                    "Field '{}' had {} errors while processing array values: {}",
+                    field_name,
+                    errors.len(),
+                    errors.join("; ")
+                );
+            }
             
             if branches.is_empty() {
-                return Err(ParseError::parser_error("Empty array in field rule"));
+                return Err(ParseError::parser_error(&format!(
+                    "Empty array in field rule for '{}': all values failed to process. Errors: {}",
+                    field_name,
+                    errors.join("; ")
+                )));
             }
             
             NodeSimpleOr::new(branches).reduce()

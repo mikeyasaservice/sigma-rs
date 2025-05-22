@@ -111,6 +111,15 @@ pub enum ParseError {
         /// The unsupported value type
         value_type: String 
     },
+
+    /// Recursion depth limit exceeded during parsing
+    #[error("recursion depth limit exceeded: {current} levels, limit: {limit}")]
+    RecursionLimitExceeded {
+        /// Current recursion depth
+        current: usize,
+        /// Maximum allowed depth
+        limit: usize,
+    },
 }
 
 impl ParseError {
