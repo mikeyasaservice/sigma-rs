@@ -1,7 +1,9 @@
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::borrow::Cow;
 use moka::future::Cache;
 use chrono::{DateTime, Utc};
+use parking_lot::RwLock;
 use crate::ast::nodes::NodeAggregation;
 use crate::event::Event;
 use super::{AggregationResult, AggregationStatistics, AggregationConfig};
@@ -10,7 +12,7 @@ use super::{AggregationResult, AggregationStatistics, AggregationConfig};
 pub struct AggregationEvaluator {
     cache: Cache<String, Arc<RwLock<GroupState>>>,
     config: AggregationConfig,
-    stats: Arc<RwLock<Stats>>,
+    stats: Arc<Stats>,
 }
 
 #[derive(Debug)]
@@ -22,10 +24,19 @@ struct GroupState {
     last_update: DateTime<Utc>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct Stats {
-    total_evaluations: u64,
-    active_groups: usize,
+    total_evaluations: AtomicU64,
+    active_groups: AtomicUsize,
+}
+
+impl Default for Stats {
+    fn default() -> Self {
+        Self {
+            total_evaluations: AtomicU64::new(0),
+            active_groups: AtomicUsize::new(0),
+        }
+    }
 }
 
 impl AggregationEvaluator {
@@ -34,27 +45,35 @@ impl AggregationEvaluator {
     }
     
     pub fn with_config(config: AggregationConfig) -> Self {
-        let cache = Cache::builder()
+        let mut cache_builder = Cache::builder()
             .time_to_live(config.group_ttl)
-            .build();
+            .max_capacity(config.max_cache_size);
+            
+        // Add memory limit if specified
+        if let Some(_memory_limit) = config.max_cache_memory {
+            // Note: moka doesn't directly support memory limits, but we can use weigher
+            // For now, we'll use capacity limit as a proxy
+            cache_builder = cache_builder.max_capacity(config.max_cache_size);
+        }
+        
+        let cache = cache_builder.build();
             
         Self {
             cache,
             config,
-            stats: Arc::new(RwLock::new(Stats::default())),
+            stats: Arc::new(Stats::default()),
         }
     }
     
     pub async fn evaluate(&self, node: &NodeAggregation, event: &dyn Event) -> AggregationResult {
-        let mut stats = self.stats.write().await;
-        stats.total_evaluations += 1;
-        drop(stats);
+        // Increment evaluation counter atomically - no lock needed
+        self.stats.total_evaluations.fetch_add(1, Ordering::Relaxed);
         
         // Extract group key
         let group_key = match &node.by_field {
             Some(field) => {
                 match event.select(field) {
-                    (Some(value), _) => format!("{}:{}", field, value_to_string(&value)),
+                    (Some(value), _) => format!("{}:{}", field, value_to_cow(&value)),
                     _ => format!("{}:unknown", field),
                 }
             }
@@ -62,7 +81,7 @@ impl AggregationEvaluator {
         };
         
         // Get or create group state
-        let state = self.cache.try_get_with(group_key.clone(), async {
+        let state = match self.cache.try_get_with(group_key.clone(), async {
             Ok(Arc::new(RwLock::new(GroupState {
                 count: 0,
                 sum: 0.0,
@@ -70,9 +89,21 @@ impl AggregationEvaluator {
                 max: f64::MIN,
                 last_update: Utc::now(),
             }))) as std::result::Result<Arc<RwLock<GroupState>>, std::convert::Infallible>
-        }).await.unwrap();
+        }).await {
+            Ok(state) => state,
+            Err(_) => {
+                // This should never happen with Infallible, but handle gracefully
+                tracing::error!("Cache operation failed unexpectedly");
+                return AggregationResult {
+                    triggered: false,
+                    value: 0.0,
+                    group: Some(group_key),
+                    timestamp: Utc::now(),
+                };
+            }
+        };
         
-        let mut state_guard = state.write().await;
+        let mut state_guard = state.write();
         
         // Update aggregation based on function
         let current_value = match &node.function {
@@ -121,11 +152,11 @@ impl AggregationEvaluator {
     }
     
     pub async fn get_statistics(&self) -> AggregationStatistics {
-        let stats = self.stats.read().await;
+        // Load atomic counters without any locks
         AggregationStatistics {
             active_groups: self.cache.weighted_size() as usize,
             memory_usage_bytes: std::mem::size_of::<GroupState>() * self.cache.weighted_size() as usize,
-            total_evaluations: stats.total_evaluations,
+            total_evaluations: self.stats.total_evaluations.load(Ordering::Relaxed),
             cache_hit_rate: 0.0, // Simplified for testing
         }
     }
@@ -142,12 +173,12 @@ fn extract_numeric_value(event: &dyn Event, field: &str) -> f64 {
     }
 }
 
-fn value_to_string(value: &crate::event::Value) -> String {
+fn value_to_cow(value: &crate::event::Value) -> Cow<'_, str> {
     match value {
-        crate::event::Value::String(s) => s.clone(),
-        crate::event::Value::Integer(i) => i.to_string(),
-        crate::event::Value::Float(f) => f.to_string(),
-        crate::event::Value::Boolean(b) => b.to_string(),
-        _ => "unknown".to_string(),
+        crate::event::Value::String(s) => Cow::Borrowed(s),
+        crate::event::Value::Integer(i) => Cow::Owned(i.to_string()),
+        crate::event::Value::Float(f) => Cow::Owned(f.to_string()),
+        crate::event::Value::Boolean(b) => Cow::Owned(b.to_string()),
+        _ => Cow::Borrowed("unknown"),
     }
 }
