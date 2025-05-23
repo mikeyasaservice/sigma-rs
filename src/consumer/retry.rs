@@ -365,7 +365,9 @@ mod tests {
                 assert_eq!(value, "success");
                 assert_eq!(attempts, 2);
             }
-            _ => panic!("Expected success"),
+            RetryResult::Failed { error, attempts } => {
+                panic!("Expected success but got failure after {} attempts: {}", attempts, error);
+            }
         }
     }
     

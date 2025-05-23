@@ -925,3 +925,23 @@ async fn process_message_with_retry<P: MessageProcessor>(
         }
     }
 }
+
+impl<P: MessageProcessor> Drop for RedpandaConsumer<P> {
+    fn drop(&mut self) {
+        // Signal shutdown to prevent new messages
+        let _ = self.shutdown_tx.send(true);
+        
+        // Note: We cannot perform async operations in Drop, so the actual graceful
+        // shutdown with offset commit should be done by calling shutdown() explicitly
+        // before the consumer is dropped.
+        //
+        // The Kafka consumer (StreamConsumer) will automatically close its connection
+        // when the Arc is dropped, but this might not commit pending offsets.
+        //
+        // Best practice: Always call shutdown() explicitly before dropping the consumer.
+        
+        tracing::warn!(
+            "RedpandaConsumer dropped - ensure shutdown() was called for graceful cleanup"
+        );
+    }
+}

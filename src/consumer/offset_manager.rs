@@ -6,16 +6,21 @@ use rdkafka::TopicPartitionList;
 use rdkafka::Offset;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, error, info};
 
+/// Topic name cache for string interning
+type TopicCache = Arc<RwLock<HashMap<String, Arc<String>>>>;
+
 /// Manages Kafka offsets with batching and error handling
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct OffsetManager {
     /// Pending offsets to commit
-    pending_offsets: Arc<Mutex<HashMap<(String, i32), i64>>>,
+    pending_offsets: Arc<Mutex<HashMap<(Arc<String>, i32), i64>>>,
     /// Committed offsets
-    committed_offsets: Arc<Mutex<HashMap<(String, i32), i64>>>,
+    committed_offsets: Arc<Mutex<HashMap<(Arc<String>, i32), i64>>>,
+    /// Topic name cache for string interning
+    topic_cache: TopicCache,
     /// Batch size for offset commits
     batch_size: usize,
     /// Maximum time between commits
@@ -28,15 +33,34 @@ impl OffsetManager {
         Self {
             pending_offsets: Arc::new(Mutex::new(HashMap::new())),
             committed_offsets: Arc::new(Mutex::new(HashMap::new())),
+            topic_cache: Arc::new(RwLock::new(HashMap::new())),
             batch_size,
             _commit_interval: commit_interval,
         }
     }
     
+    /// Get or intern a topic name
+    async fn intern_topic(&self, topic: &str) -> Arc<String> {
+        // Fast path: check if already interned
+        {
+            let cache = self.topic_cache.read().await;
+            if let Some(interned) = cache.get(topic) {
+                return Arc::clone(interned);
+            }
+        }
+        
+        // Slow path: intern the topic name
+        let mut cache = self.topic_cache.write().await;
+        cache.entry(topic.to_string())
+            .or_insert_with(|| Arc::new(topic.to_string()))
+            .clone()
+    }
+    
     /// Mark an offset for commit
     pub async fn mark_offset(&self, topic: &str, partition: i32, offset: i64) {
+        let interned_topic = self.intern_topic(topic).await;
         let mut pending = self.pending_offsets.lock().await;
-        pending.insert((topic.to_string(), partition), offset);
+        pending.insert((interned_topic, partition), offset);
         
         debug!(
             "Marked offset {} for topic {} partition {} for commit",
@@ -55,7 +79,7 @@ impl OffsetManager {
         let mut tpl = TopicPartitionList::new();
         
         for ((topic, partition), offset) in pending.iter() {
-            tpl.add_partition_offset(topic, *partition, Offset::Offset(*offset + 1))?;
+            tpl.add_partition_offset(topic.as_str(), *partition, Offset::Offset(*offset + 1))?;
         }
         
         debug!("Committing {} offsets", pending.len());
@@ -81,8 +105,9 @@ impl OffsetManager {
     
     /// Get the last committed offset for a partition
     pub async fn get_committed_offset(&self, topic: &str, partition: i32) -> Option<i64> {
+        let interned_topic = self.intern_topic(topic).await;
         let committed = self.committed_offsets.lock().await;
-        committed.get(&(topic.to_string(), partition)).copied()
+        committed.get(&(interned_topic, partition)).copied()
     }
     
     /// Get pending offsets count
@@ -107,7 +132,11 @@ impl OffsetManager {
     /// Get all pending offsets (for debugging)
     pub async fn get_pending_offsets(&self) -> HashMap<(String, i32), i64> {
         let pending = self.pending_offsets.lock().await;
-        pending.clone()
+        pending.iter()
+            .map(|((topic, partition), offset)| {
+                ((topic.as_ref().clone(), *partition), *offset)
+            })
+            .collect()
     }
     
     /// Commit specific offsets
@@ -127,7 +156,8 @@ impl OffsetManager {
         // Update committed offsets
         let mut committed = self.committed_offsets.lock().await;
         for (topic, partition, offset) in offsets {
-            committed.insert((topic, partition), offset);
+            let interned_topic = self.intern_topic(&topic).await;
+            committed.insert((interned_topic, partition), offset);
         }
         
         Ok(())
