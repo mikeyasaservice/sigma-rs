@@ -102,6 +102,7 @@ pub fn coerce_for_string_match_owned(value: &Value) -> String {
 }
 
 /// Coerce a value for numeric pattern matching
+/// Returns None if the value cannot be safely converted to i64
 pub fn coerce_for_numeric_match(value: &Value) -> Option<i64> {
     value.to_int_match()
 }
@@ -154,10 +155,42 @@ mod tests {
         let large_u64 = u64::MAX;
         assert_eq!(coerce_for_string_match(&json!(large_u64)), large_u64.to_string());
         
-        // This might overflow to negative when converting to i64
+        // Test u64 that fits in i64
+        let fits_in_i64 = json!(9223372036854775807u64); // i64::MAX
+        assert_eq!(coerce_for_numeric_match(&fits_in_i64), Some(i64::MAX));
+        
+        // Test u64 that overflows i64
         let large_num = json!(9223372036854775808u64); // i64::MAX + 1
-        // Note: In the Go version, this actually gets converted (albeit incorrectly)
-        // so we should match that behavior
-        assert!(coerce_for_numeric_match(&large_num).is_some());
+        assert_eq!(coerce_for_numeric_match(&large_num), None);
+        
+        // Test u64::MAX
+        assert_eq!(coerce_for_numeric_match(&json!(u64::MAX)), None);
+    }
+    
+    #[test]
+    fn test_float_to_int_bounds() {
+        // Test float within bounds
+        assert_eq!(coerce_for_numeric_match(&json!(123.456)), Some(123));
+        
+        // Test float at i64::MAX boundary
+        let max_safe = json!(9223372036854775807.0);
+        assert_eq!(coerce_for_numeric_match(&max_safe), Some(i64::MAX));
+        
+        // Test float beyond i64::MAX
+        let too_large = json!(9223372036854775808.0);
+        assert_eq!(coerce_for_numeric_match(&too_large), None);
+        
+        // Test float at i64::MIN boundary
+        let min_safe = json!(-9223372036854775808.0);
+        assert_eq!(coerce_for_numeric_match(&min_safe), Some(i64::MIN));
+        
+        // Test float beyond i64::MIN
+        let too_small = json!(-9223372036854775809.0);
+        assert_eq!(coerce_for_numeric_match(&too_small), None);
+        
+        // Test special float values
+        assert_eq!(coerce_for_numeric_match(&json!(f64::INFINITY)), None);
+        assert_eq!(coerce_for_numeric_match(&json!(f64::NEG_INFINITY)), None);
+        assert_eq!(coerce_for_numeric_match(&json!(f64::NAN)), None);
     }
 }

@@ -17,7 +17,7 @@ mod test_escape;
 pub use coercion::*;
 pub use escape::{escape_sigma_for_glob, escape_sigma_for_glob_cow};
 pub use factory::*;
-pub use intern::{intern_pattern, global_interner_stats, InternerStats};
+pub use intern::{intern_pattern, global_interner_stats, InternerStats, StringInternerConfig};
 pub use num_matcher::*;
 pub use security::*;
 pub use string_matcher::*;
