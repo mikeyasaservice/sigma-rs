@@ -694,7 +694,7 @@ mod tests {
         assert!(controller.memory_usage() > 0);
         
         // Memory utilization should be non-zero
-        assert!(controller.memory_utilization().unwrap() > 0.0);
+        assert!(controller.memory_utilization().expect("Memory limit should be set for this test") > 0.0);
         
         // Release permit
         drop(_permit);
@@ -758,7 +758,7 @@ mod tests {
         
         // All tasks should complete eventually
         for handle in handles {
-            let result = handle.await.unwrap();
+            let result = handle.await.expect("Worker task should complete successfully");
             assert!(result < 10);
         }
         

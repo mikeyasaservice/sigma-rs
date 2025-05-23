@@ -168,18 +168,18 @@ mod tests {
     
     #[tokio::test]
     async fn test_lexer_timeout() {
-        // Create a lexer that will timeout
-        let input = "test";
+        // Create a lexer with input that will cause it to process for a while
+        let input = "(((((((((((((((((((((((((((((((test)))))))))))))))))))))))))))";
         let (lexer, _rx) = Lexer::new(input);
         
         // Use a very short timeout to force failure
-        let result = lexer.scan_with_timeout(Duration::from_millis(0)).await;
+        let result = lexer.scan_with_timeout(Duration::from_nanos(1)).await;
         
         match result {
             Err(LexError::Timeout) => {
                 // Expected behavior
             }
-            _ => panic!("Expected timeout error"),
+            _ => panic!("Expected timeout error, got: {:?}", result),
         }
     }
 }
