@@ -8,6 +8,19 @@ use crate::parser::{Parser, ParseError};
 use crate::rule::{Detection, RuleHandle};
 use crate::tree::Tree;
 
+/// Maximum recursion depth for nested expressions to prevent stack overflow
+const MAX_RECURSION_DEPTH: usize = 50;
+
+/// Maximum number of wildcards allowed in a single glob pattern
+const MAX_GLOB_WILDCARDS: usize = 10;
+
+/// Initial capacity for branch vectors
+const INITIAL_AND_CAPACITY: usize = 8;
+const INITIAL_OR_CAPACITY: usize = 4;
+
+/// Maximum number of branches to prevent memory exhaustion
+const MAX_BRANCHES: usize = 1000;
+
 /// Build a new Tree from a RuleHandle
 pub async fn build_tree(rule: RuleHandle) -> Result<Tree, ParseError> {
     let _condition = rule.rule.detection.condition()
@@ -30,7 +43,37 @@ pub async fn build_tree(rule: RuleHandle) -> Result<Tree, ParseError> {
                     format!("Failed to create pattern for field '{}' with value '{}': {}", field, value, error)
                 )
             }
-            _ => e,
+            ParseError::InvalidGlobPattern { pattern, error } => {
+                ParseError::detection_parsing_failed(
+                    &rule.rule.id,
+                    format!("Invalid glob pattern '{}': {}", pattern, error)
+                )
+            }
+            ParseError::RecursionLimitExceeded { current, limit } => {
+                ParseError::detection_parsing_failed(
+                    &rule.rule.id,
+                    format!("Recursion limit exceeded: {} (limit: {})", current, limit)
+                )
+            }
+            ParseError::InvalidBranchStructure { message } => {
+                ParseError::detection_parsing_failed(
+                    &rule.rule.id,
+                    format!("Invalid branch structure: {}", message)
+                )
+            }
+            ParseError::TokenLimitExceeded { current, limit } => {
+                ParseError::detection_parsing_failed(
+                    &rule.rule.id,
+                    format!("Token limit exceeded: {} (limit: {})", current, limit)
+                )
+            }
+            ParseError::MemoryLimitExceeded { current_bytes, limit_bytes } => {
+                ParseError::detection_parsing_failed(
+                    &rule.rule.id,
+                    format!("Memory limit exceeded: {} bytes (limit: {} bytes)", current_bytes, limit_bytes)
+                )
+            }
+            _ => ParseError::detection_parsing_failed(&rule.rule.id, e.to_string()),
         }
     })?;
     
@@ -49,10 +92,18 @@ pub fn build_branch(
     depth: usize,
     no_collapse_ws: bool,
 ) -> Result<Arc<dyn Branch>, ParseError> {
+    // Check recursion depth to prevent stack overflow
+    if depth > MAX_RECURSION_DEPTH {
+        return Err(ParseError::RecursionLimitExceeded {
+            current: depth,
+            limit: MAX_RECURSION_DEPTH,
+        });
+    }
+    
     let mut iter = tokens.into_iter().peekable();
     
-    let mut and_nodes: Vec<Arc<dyn Branch>> = Vec::new();
-    let mut or_nodes: Vec<Arc<dyn Branch>> = Vec::new();
+    let mut and_nodes: Vec<Arc<dyn Branch>> = Vec::with_capacity(INITIAL_AND_CAPACITY);
+    let mut or_nodes: Vec<Arc<dyn Branch>> = Vec::with_capacity(INITIAL_OR_CAPACITY);
     let mut negated = false;
     let mut wildcard = None;
     
@@ -83,7 +134,7 @@ pub fn build_branch(
                 // Collect current AND nodes into OR
                 let and_branch = reduce_branches(and_nodes, BranchType::And)?;
                 or_nodes.push(and_branch);
-                and_nodes = Vec::new();
+                and_nodes = Vec::with_capacity(INITIAL_AND_CAPACITY);
             }
             
             Token::KeywordNot => {
@@ -92,8 +143,8 @@ pub fn build_branch(
             
             Token::SepLpar => {
                 // Extract group and build recursively
-                let group_tokens = extract_group(&mut iter)?;
-                let branch = build_branch(detection, group_tokens, depth + 1, no_collapse_ws)?;
+                let group_items = extract_group_items(&mut iter)?;
+                let branch = build_branch(detection, group_items, depth + 1, no_collapse_ws)?;
                 
                 and_nodes.push(if negated {
                     Arc::new(NodeNot::new(branch))
@@ -125,6 +176,9 @@ pub fn build_branch(
             }
             
             Token::IdentifierWithWildcard => {
+                // Validate glob pattern complexity
+                validate_glob_pattern(&item.value)?;
+                
                 let glob = GlobBuilder::new(&item.value)
                     .literal_separator(false)
                     .build()
@@ -181,6 +235,13 @@ pub fn build_branch(
         }
     }
     
+    // Check branch limits
+    if and_nodes.len() + or_nodes.len() > MAX_BRANCHES {
+        return Err(ParseError::ParserError(
+            format!("Too many branches: {} (limit: {})", and_nodes.len() + or_nodes.len(), MAX_BRANCHES)
+        ));
+    }
+    
     // Final reduction
     let and_branch = reduce_branches(and_nodes, BranchType::And)?;
     or_nodes.push(and_branch);
@@ -211,11 +272,13 @@ fn reduce_branches(mut branches: Vec<Arc<dyn Branch>>, branch_type: BranchType) 
             message: "Failed to pop from single-element branch list".to_string(),
         }),
         2 => {
-            let right = branches.pop().ok_or_else(|| ParseError::InvalidBranchStructure {
-                message: "Failed to pop right branch from two-element list".to_string(),
+            // More efficient handling of 2 elements using split_off
+            let remaining = branches.split_off(1);
+            let left = branches.into_iter().next().ok_or_else(|| ParseError::InvalidBranchStructure {
+                message: "Failed to get left branch".to_string(),
             })?;
-            let left = branches.pop().ok_or_else(|| ParseError::InvalidBranchStructure {
-                message: "Failed to pop left branch from two-element list".to_string(),
+            let right = remaining.into_iter().next().ok_or_else(|| ParseError::InvalidBranchStructure {
+                message: "Failed to get right branch".to_string(),
             })?;
             match branch_type {
                 BranchType::And => Ok(Arc::new(NodeAnd::new(left, right))),
@@ -231,29 +294,55 @@ fn reduce_branches(mut branches: Vec<Arc<dyn Branch>>, branch_type: BranchType) 
     }
 }
 
-fn extract_group(iter: &mut std::iter::Peekable<std::vec::IntoIter<Item>>) -> Result<Vec<Item>, ParseError> {
+/// Extract group items without cloning to improve performance
+fn extract_group_items(iter: &mut std::iter::Peekable<std::vec::IntoIter<Item>>) -> Result<Vec<Item>, ParseError> {
     let mut group = Vec::new();
     let mut balance = 1;
     
-    for item in iter {
-        if balance > 0 {
-            group.push(item.clone());
-        }
-        
+    while let Some(item) = iter.next() {
         match item.token {
-            Token::SepLpar => balance += 1,
+            Token::SepLpar => {
+                balance += 1;
+                group.push(item);
+            }
             Token::SepRpar => {
                 balance -= 1;
                 if balance == 0 {
-                    group.pop(); // Remove the closing paren
+                    // Don't include the closing paren
                     return Ok(group);
+                } else {
+                    group.push(item);
                 }
             }
-            _ => {}
+            _ => {
+                group.push(item);
+            }
         }
     }
     
     Err(ParseError::UnmatchedParenthesis)
+}
+
+/// Validate glob pattern complexity to prevent ReDoS
+fn validate_glob_pattern(pattern: &str) -> Result<(), ParseError> {
+    let wildcard_count = pattern.chars().filter(|&c| c == '*' || c == '?').count();
+    
+    if wildcard_count > MAX_GLOB_WILDCARDS {
+        return Err(ParseError::InvalidGlobPattern {
+            pattern: pattern.to_string(),
+            error: format!("Too many wildcards: {} (limit: {})", wildcard_count, MAX_GLOB_WILDCARDS),
+        });
+    }
+    
+    // Check for pathological patterns
+    if pattern.contains("**") || pattern.contains("*?*") || pattern.contains("?*?") {
+        return Err(ParseError::InvalidGlobPattern {
+            pattern: pattern.to_string(),
+            error: "Pattern contains potentially dangerous wildcard sequences".to_string(),
+        });
+    }
+    
+    Ok(())
 }
 
 fn extract_all_to_rules(
@@ -316,7 +405,7 @@ fn build_rule_from_ident(
                 if !keywords.is_empty() {
                     // Create a keywords field pattern
                     let field_rule = crate::ast::FieldRule::new(
-                        "keywords".to_string(),
+                        Arc::from("keywords"),
                         crate::ast::FieldPattern::Keywords(keywords),
                     );
                     return Ok(Arc::new(Identifier::from_rule(field_rule)));
@@ -327,7 +416,7 @@ fn build_rule_from_ident(
         IdentifierType::Selection => {
             // Handle selection object
             if let Some(obj) = value.as_object() {
-                eprintln!("Processing selection object with {} fields", obj.len());
+                tracing::error!("Processing selection object with {} fields", obj.len());
                 // For single field selections, create a simple field rule
                 if obj.len() == 1 {
                     let (key, val) = match obj.iter().next() {
@@ -336,24 +425,24 @@ fn build_rule_from_ident(
                             "Empty object in selection".to_string()
                         )),
                     };
-                    eprintln!("Processing single field: key={}, val={:?}", key, val);
+                    tracing::error!("Processing single field: key={}, val={:?}", key, val);
                     let (field_name, modifier) = parse_field_key(key);
-                    eprintln!("Parsed field: name={}, modifier={:?}", field_name, modifier);
+                    tracing::error!("Parsed field: name={}, modifier={:?}", field_name, modifier);
                     let pattern = create_field_pattern_with_modifier(val, modifier)?;
-                    let field_rule = crate::ast::FieldRule::new(field_name, pattern);
+                    let field_rule = crate::ast::FieldRule::new(Arc::from(field_name), pattern);
                     return Ok(Arc::new(Identifier::from_rule(field_rule)));
                 }
                 
                 // For multiple fields, create an AND of field rules
-                eprintln!("Creating AND of multiple field rules");
+                tracing::error!("Creating AND of multiple field rules");
                 let branches: Vec<Arc<dyn Branch>> = obj
                     .iter()
                     .map(|(key, val)| {
-                        eprintln!("Processing field: key={}, val={:?}", key, val);
+                        tracing::error!("Processing field: key={}, val={:?}", key, val);
                         let (field_name, modifier) = parse_field_key(key);
-                        eprintln!("Parsed field: name={}, modifier={:?}", field_name, modifier);
+                        tracing::error!("Parsed field: name={}, modifier={:?}", field_name, modifier);
                         let pattern = create_field_pattern_with_modifier(val, modifier)?;
-                        let field_rule = crate::ast::FieldRule::new(field_name, pattern);
+                        let field_rule = crate::ast::FieldRule::new(Arc::from(field_name), pattern);
                         Ok(Arc::new(Identifier::from_rule(field_rule)) as Arc<dyn Branch>)
                     })
                     .collect::<Result<Vec<_>, ParseError>>()?;
@@ -384,9 +473,6 @@ fn parse_field_key(key: &str) -> (String, Option<crate::pattern::TextPatternModi
     }
 }
 
-fn create_field_pattern(value: &serde_json::Value) -> Result<crate::ast::FieldPattern, ParseError> {
-    create_field_pattern_with_modifier(value, None)
-}
 
 fn create_field_pattern_with_modifier(value: &serde_json::Value, modifier: Option<crate::pattern::TextPatternModifier>) -> Result<crate::ast::FieldPattern, ParseError> {
     use crate::pattern::{new_string_matcher, new_num_matcher, TextPatternModifier};
@@ -415,7 +501,7 @@ fn create_field_pattern_with_modifier(value: &serde_json::Value, modifier: Optio
             
             Ok(crate::ast::FieldPattern::String {
                 matcher: Arc::from(matcher),
-                pattern_desc: s.clone(),
+                pattern_desc: Arc::from(s.clone()),
             })
         }
         serde_json::Value::Number(n) => {
@@ -427,7 +513,7 @@ fn create_field_pattern_with_modifier(value: &serde_json::Value, modifier: Optio
                 
                 Ok(crate::ast::FieldPattern::Numeric {
                     matcher: Arc::from(matcher),
-                    pattern_desc: n.to_string(),
+                    pattern_desc: Arc::from(n.to_string()),
                 })
             } else {
                 // Fall back to string matching for floats
@@ -443,7 +529,7 @@ fn create_field_pattern_with_modifier(value: &serde_json::Value, modifier: Optio
                 
                 Ok(crate::ast::FieldPattern::String {
                     matcher: Arc::from(matcher),
-                    pattern_desc: n.to_string(),
+                    pattern_desc: Arc::from(n.to_string()),
                 })
             }
         }
@@ -460,7 +546,7 @@ fn create_field_pattern_with_modifier(value: &serde_json::Value, modifier: Optio
             
             Ok(crate::ast::FieldPattern::String {
                 matcher: Arc::from(matcher),
-                pattern_desc: b.to_string(),
+                pattern_desc: Arc::from(b.to_string()),
             })
         }
         serde_json::Value::Null => {
@@ -476,7 +562,7 @@ fn create_field_pattern_with_modifier(value: &serde_json::Value, modifier: Optio
             
             Ok(crate::ast::FieldPattern::String {
                 matcher: Arc::from(matcher),
-                pattern_desc: "null".to_string(),
+                pattern_desc: Arc::from("null"),
             })
         }
         _ => Err(ParseError::UnsupportedValueType { 
@@ -488,7 +574,6 @@ fn create_field_pattern_with_modifier(value: &serde_json::Value, modifier: Optio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rule::Rule;
     use std::path::PathBuf;
     
     #[tokio::test]
@@ -505,7 +590,7 @@ detection:
         let rule = crate::rule::rule_from_yaml(yaml.as_bytes())?;
         let rule_handle = RuleHandle::new(rule, PathBuf::from("test.yml"));
         
-        let tree = build_tree(rule_handle).await?;
+        let _tree = build_tree(rule_handle).await?;
         
         // TODO: Add integration test with proper Event implementation
         // This test verifies that the tree builds successfully
@@ -533,5 +618,48 @@ detection:
         // TODO: Add integration test with proper Event implementation  
         // This test verifies that the tree builds successfully
         Ok(())
+    }
+    
+    #[test]
+    fn test_recursion_limit() {
+        let detection = Detection::new();
+        
+        // Create deeply nested tokens that would exceed recursion limit
+        let mut tokens = Vec::new();
+        for _ in 0..60 {
+            tokens.push(Item::new(Token::SepLpar, "(".to_string()));
+        }
+        tokens.push(Item::new(Token::Identifier, "test".to_string()));
+        for _ in 0..60 {
+            tokens.push(Item::new(Token::SepRpar, ")".to_string()));
+        }
+        
+        let result = build_branch(&detection, tokens, 0, false);
+        
+        match result {
+            Err(ParseError::RecursionLimitExceeded { current, limit }) => {
+                assert!(current > limit);
+                assert_eq!(limit, MAX_RECURSION_DEPTH);
+            }
+            _ => panic!("Expected RecursionLimitExceeded error"),
+        }
+    }
+    
+    #[test]
+    fn test_glob_pattern_validation() {
+        // Test pattern with too many wildcards
+        let result = validate_glob_pattern("*?*?*?*?*?*?*?*?*?*?*");
+        assert!(result.is_err());
+        
+        // Test pathological patterns
+        let result = validate_glob_pattern("**test");
+        assert!(result.is_err());
+        
+        let result = validate_glob_pattern("*?*test");
+        assert!(result.is_err());
+        
+        // Test valid pattern
+        let result = validate_glob_pattern("test*file?");
+        assert!(result.is_ok());
     }
 }

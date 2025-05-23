@@ -37,6 +37,12 @@ pub struct ConsumerConfig {
     /// Processing timeout per message
     pub processing_timeout: Duration,
     
+    /// Connection timeout for initial consumer creation
+    pub connection_timeout: Duration,
+    
+    /// Network operation timeout for ongoing operations
+    pub network_timeout: Duration,
+    
     /// Retry policy
     pub retry_policy: crate::consumer::retry::RetryPolicy,
     
@@ -78,6 +84,8 @@ impl Default for ConsumerConfig {
             auto_offset_reset: "latest".to_string(),
             batch_size: 100,
             processing_timeout: Duration::from_secs(30),
+            connection_timeout: Duration::from_secs(30),
+            network_timeout: Duration::from_secs(10),
             retry_policy: crate::consumer::retry::RetryPolicy::default(),
             dlq_topic: None,
             dlq_after_retries: 3,

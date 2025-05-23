@@ -1,0 +1,160 @@
+name: Pull Request
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  validate:
+    name: Validate PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Check PR title
+        uses: amannn/action-semantic-pull-request@v5
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            chore
+            revert
+          scopes: |
+            consumer
+            parser
+            lexer
+            engine
+            rule
+            event
+            pattern
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Label PR
+        uses: actions/labeler@v4
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+  
+  size:
+    name: PR Size Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check PR size
+        uses: CodelyTV/pr-size-labeler@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          xs_label: 'size/xs'
+          xs_max_size: 10
+          s_label: 'size/s'
+          s_max_size: 100
+          m_label: 'size/m'
+          m_max_size: 500
+          l_label: 'size/l'
+          l_max_size: 1000
+          xl_label: 'size/xl'
+          fail_if_xl: false
+  
+  conflicts:
+    name: Check Conflicts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Check for conflicts
+        uses: eps1lon/actions-label-merge-conflict@releases/2.x
+        with:
+          dirtyLabel: 'has-conflicts'
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+  
+  coverage-diff:
+    name: Coverage Diff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      
+      - name: Install tarpaulin
+        run: cargo install cargo-tarpaulin
+      
+      - name: Generate base coverage
+        run: |
+          git checkout ${{ github.base_ref }}
+          cargo tarpaulin --all-features --out lcov --output-dir base-coverage
+      
+      - name: Generate PR coverage
+        run: |
+          git checkout ${{ github.head_ref }}
+          cargo tarpaulin --all-features --out lcov --output-dir pr-coverage
+      
+      - name: Coverage diff
+        uses: 5monkeys/cobertura-action@master
+        with:
+          path: pr-coverage/lcov.info
+          minimum_coverage: 70
+          fail_below_minimum: false
+          show_missing: true
+          show_line: true
+          show_branch: true
+          show_class_names: true
+  
+  benchmarks:
+    name: Benchmark Comparison
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      
+      - name: Run benchmarks
+        run: |
+          # Run benchmarks on base branch
+          git checkout ${{ github.base_ref }}
+          cargo bench --all-features -- --output-format bencher | tee base-benchmarks.txt
+          
+          # Run benchmarks on PR branch
+          git checkout ${{ github.head_ref }}
+          cargo bench --all-features -- --output-format bencher | tee pr-benchmarks.txt
+      
+      - name: Compare benchmarks
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'cargo'
+          output-file-path: pr-benchmarks.txt
+          external-data-json-path: ./base-benchmarks.txt
+          alert-threshold: '200%'
+          comment-on-alert: true
+          fail-on-alert: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: false

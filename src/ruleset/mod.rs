@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 use tracing::{info, warn, error, debug};
 use anyhow::Result;
 
@@ -20,6 +20,12 @@ use crate::{
     SigmaError,
     parser::ParseError,
 };
+
+/// Maximum number of concurrent rule evaluations to prevent resource exhaustion
+const MAX_CONCURRENT_EVALUATIONS: usize = 100;
+
+/// Maximum number of rules to load from a single directory
+const MAX_RULES_PER_DIR: usize = 10000;
 
 /// Collection of compiled Sigma rules for efficient evaluation
 #[derive(Debug)]
@@ -131,8 +137,19 @@ impl RuleSet {
         let mut entries = tokio::fs::read_dir(path).await
             .map_err(|e| SigmaError::Parse(format!("Failed to read directory {}: {}", dir, e)))?;
 
+        let mut file_count = 0;
         while let Some(entry) = entries.next_entry().await
             .map_err(|e| SigmaError::Parse(format!("Failed to read directory entry: {}", e)))? {
+            
+            // Check file count limit to prevent resource exhaustion
+            if file_count >= MAX_RULES_PER_DIR {
+                warn!(
+                    "Reached maximum rules limit ({}) in directory: {}. Skipping remaining files.",
+                    MAX_RULES_PER_DIR, dir
+                );
+                break;
+            }
+            file_count += 1;
             
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("yml") {
@@ -180,6 +197,8 @@ impl RuleSet {
         let rule_arc = Arc::new(rule);
         
         // Create a rule handle with clone for tree building
+        // Note: RuleHandle requires ownership of Rule, not Arc<Rule>, so we must clone here.
+        // The Arc is still used to share the rule with the CompiledRule struct below.
         let rule_handle = RuleHandle::new((*rule_arc).clone(), std::path::PathBuf::from("ruleset"));
         
         // Build the detection tree
@@ -226,7 +245,10 @@ impl RuleSet {
         // Wrap event in Arc for efficient sharing across tasks
         let event_arc = Arc::new(event.clone());
 
-        // Evaluate rules in parallel for better performance
+        // Create semaphore to limit concurrent evaluations
+        let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_EVALUATIONS));
+
+        // Evaluate rules in parallel with bounded concurrency
         let tasks: Vec<_> = self.rules
             .iter()
             .filter(|r| r.enabled)
@@ -234,8 +256,13 @@ impl RuleSet {
                 let event_ref = Arc::clone(&event_arc);
                 let tree = Arc::clone(&compiled_rule.tree);
                 let rule = Arc::clone(&compiled_rule.rule);
+                let semaphore = Arc::clone(&semaphore);
                 
                 tokio::spawn(async move {
+                    // Acquire permit before evaluation
+                    let _permit = semaphore.acquire().await
+                        .map_err(|e| SigmaError::Parse(format!("Failed to acquire semaphore: {}", e)))?;
+                    
                     let rule_start = std::time::Instant::now();
                     let (matched, applicable) = tree.match_event(&*event_ref).await;
                     let evaluation_time = rule_start.elapsed();
@@ -289,11 +316,14 @@ impl RuleSet {
     pub fn set_rule_enabled(&mut self, rule_id: &str, enabled: bool) -> Result<()> {
         if let Some(&index) = self.rule_index.get(rule_id) {
             if let Some(rule) = self.rules.get_mut(index) {
-                rule.enabled = enabled;
-                if enabled {
-                    self.metadata.enabled_rules += 1;
-                } else {
-                    self.metadata.enabled_rules -= 1;
+                // Only update counter if state actually changes
+                if rule.enabled != enabled {
+                    rule.enabled = enabled;
+                    if enabled {
+                        self.metadata.enabled_rules += 1;
+                    } else {
+                        self.metadata.enabled_rules -= 1;
+                    }
                 }
                 Ok(())
             } else {
@@ -496,6 +526,78 @@ detection:
         // Loading should succeed for small files
         let result = ruleset.load_rule_file(temp_file.path()).await;
         assert!(result.is_ok());
+        
+        Ok(())
+    }
+    
+    #[tokio::test]
+    async fn test_concurrent_evaluation_with_semaphore() -> SigmaResult<()> {
+        let mut ruleset = RuleSet::new();
+        
+        // Add many rules to test semaphore limiting
+        for i in 0..200 {
+            let rule_yaml = format!(r#"
+title: Test Rule {}
+id: test-rule-{}
+detection:
+    selection:
+        EventID: {}
+    condition: selection
+"#, i, i, i % 10);
+            
+            let rule = rule_from_yaml(rule_yaml.as_bytes())?;
+            ruleset.add_rule(rule).await?;
+        }
+        
+        let event = DynamicEvent::new(json!({
+            "EventID": 1
+        }));
+        
+        // This should complete without resource exhaustion
+        let result = ruleset.evaluate(&event).await?;
+        assert_eq!(result.rules_evaluated, 200);
+        
+        // Check that some rules matched (those with EventID: 1)
+        let matched_count = result.matches.iter().filter(|m| m.matched).count();
+        assert!(matched_count > 0);
+        
+        Ok(())
+    }
+    
+    #[tokio::test]
+    async fn test_set_rule_enabled_idempotent() -> SigmaResult<()> {
+        let mut ruleset = RuleSet::new();
+        
+        let rule_yaml = br#"
+        title: Test Rule
+        id: test-rule-1
+        detection:
+            selection:
+                EventID: 1
+            condition: selection
+        "#;
+        
+        let rule = rule_from_yaml(rule_yaml)?;
+        ruleset.add_rule(rule).await?;
+        
+        // Initial state: 1 enabled rule
+        assert_eq!(ruleset.get_metadata().enabled_rules, 1);
+        
+        // Disable the rule
+        ruleset.set_rule_enabled("test-rule-1", false)?;
+        assert_eq!(ruleset.get_metadata().enabled_rules, 0);
+        
+        // Disable again - should not change counter
+        ruleset.set_rule_enabled("test-rule-1", false)?;
+        assert_eq!(ruleset.get_metadata().enabled_rules, 0);
+        
+        // Enable the rule
+        ruleset.set_rule_enabled("test-rule-1", true)?;
+        assert_eq!(ruleset.get_metadata().enabled_rules, 1);
+        
+        // Enable again - should not change counter
+        ruleset.set_rule_enabled("test-rule-1", true)?;
+        assert_eq!(ruleset.get_metadata().enabled_rules, 1);
         
         Ok(())
     }

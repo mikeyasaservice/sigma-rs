@@ -67,12 +67,20 @@ impl BackpressureController {
     }
     
     /// Acquire a permit for processing
-    pub async fn acquire(&self) -> BackpressurePermit {
+    pub async fn acquire(&self) -> Result<BackpressurePermit, crate::consumer::error::ConsumerError> {
         // Check memory constraint first with bounded retry
         if let Some(limit) = self.memory_limit {
             const MAX_CAS_RETRIES: u32 = 1000;
+            const MAX_MEMORY_WAIT_ATTEMPTS: u32 = 100;
             
+            let mut memory_wait_attempts = 0;
             loop {
+                if memory_wait_attempts >= MAX_MEMORY_WAIT_ATTEMPTS {
+                    return Err(crate::consumer::error::ConsumerError::Backpressure(
+                        format!("Memory limit exhausted after {} attempts", MAX_MEMORY_WAIT_ATTEMPTS)
+                    ));
+                }
+                
                 let current_mem = self.current_memory.load(Ordering::Relaxed);
                 let avg_size = self.avg_message_size.load(Ordering::Relaxed);
                 
@@ -110,26 +118,64 @@ impl BackpressureController {
                     }
                     // Otherwise continue trying
                 } else {
-                    // Memory limit reached, wait
-                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    // Memory limit reached, wait with exponential backoff
+                    let wait_time = Duration::from_millis(10 * (memory_wait_attempts + 1).min(100));
+                    tokio::time::sleep(wait_time).await;
+                    memory_wait_attempts += 1;
                 }
             }
         }
         
-        let permit = self.semaphore.clone().acquire_owned().await
-            .expect("Semaphore should not be closed");
+        // Acquire permit with timeout to prevent indefinite blocking
+        let permit = match tokio::time::timeout(
+            Duration::from_secs(30),
+            self.semaphore.clone().acquire_owned()
+        ).await {
+            Ok(Ok(permit)) => permit,
+            Ok(Err(_)) => {
+                warn!("Semaphore closed during permit acquisition");
+                // Try to acquire emergency permit
+                match self.semaphore.clone().try_acquire_owned() {
+                    Ok(permit) => {
+                        return Ok(BackpressurePermit {
+                            controller: self.clone(),
+                            _permit: permit,
+                            memory_reserved: 0,
+                            released: AtomicBool::new(false),
+                        });
+                    }
+                    Err(_) => {
+                        return Err(crate::consumer::error::ConsumerError::Backpressure(
+                            "Failed to acquire emergency permit: semaphore closed".to_string()
+                        ));
+                    }
+                }
+            }
+            Err(_) => {
+                warn!("Timeout waiting for backpressure permit after 30s");
+                // Try once more with try_acquire to avoid complete stall
+                match self.semaphore.clone().try_acquire_owned() {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        return Err(crate::consumer::error::ConsumerError::Backpressure(
+                            "Failed to acquire permit: timeout and emergency acquisition failed".to_string()
+                        ));
+                    }
+                }
+            }
+        };
         
         let count = self.inflight_count.fetch_add(1, Ordering::Relaxed) + 1;
         let max_inflight = self.max_inflight.load(Ordering::Relaxed);
         
         debug!("Acquired permit, inflight: {}/{}", count, max_inflight);
         
-        BackpressurePermit {
+        Ok(BackpressurePermit {
             controller: self.clone(),
             _permit: permit,
             memory_reserved: self.avg_message_size.load(Ordering::Relaxed),
             released: AtomicBool::new(false),
-        }
+        })
     }
     
     /// Try to acquire a permit without blocking
@@ -750,12 +796,8 @@ mod tests {
     
     #[tokio::test]
     async fn test_bounded_retry_prevents_livelock() {
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(2));
-        let controller = BackpressureController::new(
-            semaphore,
-            Some(1000), // Very low memory limit to trigger retry
-            2,
-        );
+        let controller = BackpressureController::new(2, 0.8, 0.5)
+            .with_memory_limit(1); // Very low memory limit (1MB) to trigger retry
         
         // Set up a scenario that would trigger retry
         controller.update_avg_message_size(500);

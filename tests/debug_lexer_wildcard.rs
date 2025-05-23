@@ -1,0 +1,20 @@
+use sigma_rs::lexer::Lexer;
+use sigma_rs::lexer::token::Token;
+
+#[tokio::test]
+async fn debug_lexer_wildcard() {
+    let condition = "all of selection*";
+    let (lexer, mut rx) = Lexer::new(condition.to_string());
+    
+    tokio::spawn(async move {
+        lexer.scan().await.unwrap();
+    });
+    
+    tracing::error!("Tokens for: '{}'", condition);
+    while let Some(item) = rx.recv().await {
+        tracing::error!("Token: {:?}, Value: '{}'", item.token, item.value);
+        if item.token == Token::LitEof {
+            break;
+        }
+    }
+}

@@ -1,0 +1,124 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, master, dev ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday
+
+jobs:
+  format:
+    name: Check Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          components: rustfmt
+      
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      
+      - name: Suggest formatting fixes
+        if: failure()
+        run: cargo fmt --all -- --check --verbose
+  
+  lint:
+    name: Clippy Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          components: clippy
+      
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-clippy-
+            ${{ runner.os }}-cargo-
+      
+      - name: Run clippy on all targets
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      
+      - name: Run clippy on tests
+        run: cargo clippy --tests --all-features -- -D warnings
+      
+      - name: Run clippy with pedantic lints
+        run: cargo clippy --all-targets --all-features -- -W clippy::pedantic
+        continue-on-error: true
+      
+      - name: Run clippy with nursery lints
+        run: cargo clippy --all-targets --all-features -- -W clippy::nursery
+        continue-on-error: true
+  
+  complexity:
+    name: Code Complexity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      
+      - name: Install complexity analyzer
+        run: |
+          cargo install tokei
+          cargo install cargo-geiger
+      
+      - name: Analyze code statistics
+        run: tokei
+      
+      - name: Check unsafe code usage
+        run: cargo geiger
+        continue-on-error: true
+  
+  dependencies:
+    name: Dependency Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      
+      - name: Install dependency tools
+        run: |
+          cargo install cargo-outdated
+          cargo install cargo-tree
+      
+      - name: Check outdated dependencies
+        run: cargo outdated
+        continue-on-error: true
+      
+      - name: Display dependency tree
+        run: cargo tree --all-features
+      
+      - name: Check for duplicate dependencies
+        run: cargo tree --duplicates

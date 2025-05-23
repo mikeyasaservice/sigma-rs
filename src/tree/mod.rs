@@ -57,7 +57,6 @@ mod tests {
     use crate::event::SimpleEvent;
     use crate::rule::{Rule, Detection, Logsource};
     use std::path::PathBuf;
-    use std::collections::HashMap;
     use serde_json::json;
     
     #[tokio::test]
@@ -84,14 +83,14 @@ mod tests {
         
         // Create a simple field rule that matches EventID=1
         let field_rule = FieldRule::new(
-            "EventID".to_string(),
+            Arc::from("EventID"),
             FieldPattern::String {
                 matcher: Arc::new(crate::pattern::string_matcher::ContentPattern {
                     token: Arc::from("1"),
                     lowercase: false,
                     no_collapse_ws: false,
                 }),
-                pattern_desc: "1".to_string(),
+                pattern_desc: Arc::from("1"),
             }
         );
         let identifier = Arc::new(Identifier::from_rule(field_rule));

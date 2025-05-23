@@ -1,6 +1,7 @@
 /// Core traits for event processing in the Sigma rule engine
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
+use std::sync::Arc;
 
 // Export EventBuilder for tests
 pub use builder::EventBuilder;
@@ -29,11 +30,10 @@ pub trait Event: Keyworder + Selector + Send + Sync {
 }
 
 /// Value type that can be returned from selection
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Value {
-    /// String value
-    String(String),
+    /// String value - using Arc for cheap cloning
+    String(Arc<str>),
     /// Integer value
     Integer(i64),
     /// Floating point value
@@ -47,6 +47,86 @@ pub enum Value {
     /// Null value
     #[default]
     Null,
+}
+
+// Custom Serialize/Deserialize to handle Arc<str> transparently
+impl Serialize for Value {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Value::String(s) => serializer.serialize_str(s),
+            Value::Integer(i) => serializer.serialize_i64(*i),
+            Value::Float(f) => serializer.serialize_f64(*f),
+            Value::Boolean(b) => serializer.serialize_bool(*b),
+            Value::Array(arr) => arr.serialize(serializer),
+            Value::Object(obj) => obj.serialize(serializer),
+            Value::Null => serializer.serialize_none(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Value {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let json_value = JsonValue::deserialize(deserializer)?;
+        Ok(match json_value {
+            JsonValue::String(s) => Value::String(Arc::from(s)),
+            JsonValue::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Value::Integer(i)
+                } else if let Some(f) = n.as_f64() {
+                    Value::Float(f)
+                } else {
+                    eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                    Value::Float(0.0)
+                }
+            }
+            JsonValue::Bool(b) => Value::Boolean(b),
+            JsonValue::Array(arr) => {
+                Value::Array(arr.into_iter().map(|v| match v {
+                    JsonValue::String(s) => Value::String(Arc::from(s)),
+                    JsonValue::Number(n) => {
+                        if let Some(i) = n.as_i64() {
+                            Value::Integer(i)
+                        } else if let Some(f) = n.as_f64() {
+                            Value::Float(f)
+                        } else {
+                            eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                            Value::Float(0.0)
+                        }
+                    },
+                    JsonValue::Bool(b) => Value::Boolean(b),
+                    _ => Value::Null,
+                }).collect())
+            }
+            JsonValue::Object(obj) => {
+                let map = obj.into_iter().map(|(k, v)| {
+                    let value = match v {
+                        JsonValue::String(s) => Value::String(Arc::from(s)),
+                        JsonValue::Number(n) => {
+                            if let Some(i) = n.as_i64() {
+                                Value::Integer(i)
+                            } else if let Some(f) = n.as_f64() {
+                                Value::Float(f)
+                            } else {
+                                eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                                Value::Float(0.0)
+                            }
+                        },
+                        JsonValue::Bool(b) => Value::Boolean(b),
+                        _ => Value::Null,
+                    };
+                    (k, value)
+                }).collect();
+                Value::Object(map)
+            }
+            JsonValue::Null => Value::Null,
+        })
+    }
 }
 
 /// Module with event builder for testing
@@ -96,16 +176,16 @@ impl Selector for SimpleEvent {
     fn select(&self, key: &str) -> (Option<Value>, bool) {
         match self.fields.get(key) {
             Some(json_val) => {
-                // TODO: Optimize string cloning - consider using Cow<str> or Arc<str>
                 let value = match json_val {
-                    JsonValue::String(s) => Value::String(s.clone()),
+                    JsonValue::String(s) => Value::String(Arc::from(s.as_str())),
                     JsonValue::Number(n) => {
                         if let Some(i) = n.as_i64() {
                             Value::Integer(i)
                         } else if let Some(f) = n.as_f64() {
                             Value::Float(f)
                         } else {
-                            Value::Float(n.as_f64().unwrap_or(0.0))
+                            eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                            Value::Float(0.0)
                         }
                     }
                     JsonValue::Bool(b) => Value::Boolean(*b),
@@ -113,8 +193,17 @@ impl Selector for SimpleEvent {
                         Value::Array(arr.iter().map(|v| {
                             // Simplified conversion
                             match v {
-                                JsonValue::String(s) => Value::String(s.clone()),
-                                JsonValue::Number(n) => Value::Float(n.as_f64().unwrap_or(0.0)),
+                                JsonValue::String(s) => Value::String(Arc::from(s.as_str())),
+                                JsonValue::Number(n) => {
+                                    if let Some(i) = n.as_i64() {
+                                        Value::Integer(i)
+                                    } else if let Some(f) = n.as_f64() {
+                                        Value::Float(f)
+                                    } else {
+                                        eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                                        Value::Float(0.0)
+                                    }
+                                },
                                 JsonValue::Bool(b) => Value::Boolean(*b),
                                 _ => Value::Null,
                             }
@@ -123,8 +212,17 @@ impl Selector for SimpleEvent {
                     JsonValue::Object(obj) => {
                         let map = obj.iter().map(|(k, v)| {
                             let value = match v {
-                                JsonValue::String(s) => Value::String(s.clone()),
-                                JsonValue::Number(n) => Value::Float(n.as_f64().unwrap_or(0.0)),
+                                JsonValue::String(s) => Value::String(Arc::from(s.as_str())),
+                                JsonValue::Number(n) => {
+                                    if let Some(i) = n.as_i64() {
+                                        Value::Integer(i)
+                                    } else if let Some(f) = n.as_f64() {
+                                        Value::Float(f)
+                                    } else {
+                                        eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                                        Value::Float(0.0)
+                                    }
+                                },
                                 JsonValue::Bool(b) => Value::Boolean(*b),
                                 _ => Value::Null,
                             };
@@ -223,10 +321,18 @@ impl Keyworder for DynamicEvent {
 
 impl Selector for DynamicEvent {
     fn select(&self, key: &str) -> (Option<Value>, bool) {
+        // Validate key format to prevent malicious input
+        if key.is_empty() || key.contains("..") || key.starts_with('.') || key.ends_with('.') {
+            return (None, false);
+        }
+        
         // Navigate nested keys using dot notation
         let mut current = &self.data;
         
         for part in key.split('.') {
+            if part.is_empty() {
+                return (None, false);
+            }
             match current.get(part) {
                 Some(value) => current = value,
                 None => return (None, false),
@@ -235,14 +341,15 @@ impl Selector for DynamicEvent {
         
         // Convert serde_json::Value to our Value type
         let value = match current {
-            serde_json::Value::String(s) => Value::String(s.clone()),
+            serde_json::Value::String(s) => Value::String(Arc::from(s.as_str())),
             serde_json::Value::Number(n) => {
                 if let Some(i) = n.as_i64() {
                     Value::Integer(i)
                 } else if let Some(f) = n.as_f64() {
                     Value::Float(f)
                 } else {
-                    Value::Null
+                    eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                    Value::Float(0.0)
                 }
             },
             serde_json::Value::Bool(b) => Value::Boolean(*b),
@@ -276,31 +383,42 @@ impl Event for DynamicEvent {
 }
 
 impl DynamicEvent {
+    const MAX_JSON_DEPTH: usize = 128;
+    
     fn json_to_value(json: &serde_json::Value) -> Value {
+        Self::json_to_value_bounded(json, 0).unwrap_or(Value::Null)
+    }
+    
+    fn json_to_value_bounded(json: &serde_json::Value, depth: usize) -> Result<Value> {
+        if depth > Self::MAX_JSON_DEPTH {
+            return Err(anyhow::anyhow!("JSON nesting depth exceeded maximum of {}", Self::MAX_JSON_DEPTH));
+        }
+        
         match json {
-            serde_json::Value::String(s) => Value::String(s.clone()),
+            serde_json::Value::String(s) => Ok(Value::String(Arc::from(s.as_str()))),
             serde_json::Value::Number(n) => {
                 if let Some(i) = n.as_i64() {
-                    Value::Integer(i)
+                    Ok(Value::Integer(i))
                 } else if let Some(f) = n.as_f64() {
-                    Value::Float(f)
+                    Ok(Value::Float(f))
                 } else {
-                    Value::Null
+                    eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                    Ok(Value::Float(0.0))
                 }
             },
-            serde_json::Value::Bool(b) => Value::Boolean(*b),
-            serde_json::Value::Null => Value::Null,
+            serde_json::Value::Bool(b) => Ok(Value::Boolean(*b)),
+            serde_json::Value::Null => Ok(Value::Null),
             serde_json::Value::Array(arr) => {
-                let values: Vec<Value> = arr.iter()
-                    .map(Self::json_to_value)
+                let values: Result<Vec<Value>> = arr.iter()
+                    .map(|v| Self::json_to_value_bounded(v, depth + 1))
                     .collect();
-                Value::Array(values)
+                Ok(Value::Array(values?))
             },
             serde_json::Value::Object(obj) => {
-                let map: std::collections::HashMap<String, Value> = obj.iter()
-                    .map(|(k, v)| (k.clone(), Self::json_to_value(v)))
+                let map: Result<std::collections::HashMap<String, Value>> = obj.iter()
+                    .map(|(k, v)| Self::json_to_value_bounded(v, depth + 1).map(|val| (k.clone(), val)))
                     .collect();
-                Value::Object(map)
+                Ok(Value::Object(map?))
             },
         }
     }
@@ -361,5 +479,107 @@ mod tests {
         let (keywords, applicable) = event.keywords();
         assert!(applicable);
         assert_eq!(keywords, vec!["test keyword"]);
+    }
+    
+    #[test]
+    fn test_malicious_field_access() {
+        let data = serde_json::json!({
+            "field": "value"
+        });
+        
+        let event = DynamicEvent::new(data);
+        
+        // Test empty key
+        let (_, found) = event.select("");
+        assert!(!found);
+        
+        // Test key with ..
+        let (_, found) = event.select("field..other");
+        assert!(!found);
+        
+        // Test key starting with .
+        let (_, found) = event.select(".field");
+        assert!(!found);
+        
+        // Test key ending with .
+        let (_, found) = event.select("field.");
+        assert!(!found);
+        
+        // Test key with consecutive dots
+        let (_, found) = event.select("field..other");
+        assert!(!found);
+    }
+    
+    #[test]
+    fn test_deep_json_nesting() {
+        // Create deeply nested JSON that would cause stack overflow
+        let mut json = serde_json::json!({"value": 1});
+        for _ in 0..200 {
+            json = serde_json::json!({"nested": json});
+        }
+        
+        // This should not panic
+        let value = DynamicEvent::json_to_value(&json);
+        assert!(matches!(value, Value::Null)); // Should return Null on error
+    }
+    
+    #[test]
+    fn test_number_conversion_edge_cases() {
+        let data = serde_json::json!({
+            "int": 42,
+            "float": 3.14,
+            "big_int": i64::MAX,
+            "negative": -100
+        });
+        
+        let event = DynamicEvent::new(data);
+        
+        // Test integer
+        let (value, found) = event.select("int");
+        assert!(found);
+        assert_eq!(value.unwrap().as_int(), Some(42));
+        
+        // Test float
+        let (value, found) = event.select("float");
+        assert!(found);
+        assert_eq!(value.unwrap().as_float(), Some(3.14));
+        
+        // Test big integer
+        let (value, found) = event.select("big_int");
+        assert!(found);
+        assert_eq!(value.unwrap().as_int(), Some(i64::MAX));
+        
+        // Test negative
+        let (value, found) = event.select("negative");
+        assert!(found);
+        assert_eq!(value.unwrap().as_int(), Some(-100));
+    }
+    
+    #[test]
+    fn test_no_string_clone_performance() {
+        // This test verifies string operations are efficient
+        let large_string = "x".repeat(1000); // 1KB string
+        let data = serde_json::json!({
+            "large": large_string.clone(),
+            "nested": {
+                "string": "test"
+            }
+        });
+        
+        let event = DynamicEvent::new(data);
+        
+        // Test that select returns valid string values
+        let (value1, found1) = event.select("large");
+        assert!(found1);
+        assert!(value1.is_some());
+        
+        let (value2, found2) = event.select("nested.string");
+        assert!(found2);
+        assert_eq!(value2.unwrap().as_str(), Some("test"));
+        
+        // Verify no panic on multiple accesses
+        for _ in 0..100 {
+            let (_, _) = event.select("large");
+        }
     }
 }

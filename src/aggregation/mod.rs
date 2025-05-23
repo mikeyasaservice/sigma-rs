@@ -1,7 +1,10 @@
 use chrono::{DateTime, Utc};
 
+/// Sliding window implementation for time-based aggregation
 pub mod sliding_window;
+/// Aggregation evaluation engine
 pub mod evaluator;
+/// Configuration types for aggregation
 pub mod config;
 
 pub use sliding_window::SlidingWindow;
@@ -11,11 +14,16 @@ pub use config::{AggregationConfig, WindowConfig};
 /// Aggregation functions supported by Sigma
 #[derive(Debug, Clone, PartialEq)]
 pub enum AggregationFunction {
+    /// Count aggregation
     Count,
-    Sum(String), // field name
-    Average(String), // field name
-    Min(String), // field name
-    Max(String), // field name
+    /// Sum aggregation over a field
+    Sum(String),
+    /// Average aggregation over a field
+    Average(String),
+    /// Minimum aggregation over a field
+    Min(String),
+    /// Maximum aggregation over a field
+    Max(String),
 }
 
 /// Result of an aggregation evaluation

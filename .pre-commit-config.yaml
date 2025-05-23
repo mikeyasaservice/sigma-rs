@@ -1,0 +1,68 @@
+repos:
+  - repo: local
+    hooks:
+      - id: rust-fmt
+        name: Rust fmt
+        entry: cargo fmt
+        language: system
+        types: [rust]
+        pass_filenames: false
+        always_run: true
+        
+      - id: rust-clippy
+        name: Rust clippy
+        entry: cargo clippy -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+        always_run: true
+        
+      - id: rust-check
+        name: Rust check
+        entry: cargo check --all-features
+        language: system
+        types: [rust]
+        pass_filenames: false
+        always_run: true
+        
+      - id: rust-test
+        name: Rust test
+        entry: cargo test --all-features
+        language: system
+        types: [rust]
+        pass_filenames: false
+        always_run: true
+        
+      - id: audit
+        name: Security audit
+        entry: cargo audit
+        language: system
+        pass_filenames: false
+        always_run: true
+  
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+        exclude: '^target/'
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+        exclude: '^target/'
+        
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.38.0
+    hooks:
+      - id: markdownlint
+        args: ['--fix']
+        exclude: '^target/'
