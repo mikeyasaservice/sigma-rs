@@ -72,12 +72,17 @@ impl BackpressureController {
         if let Some(limit) = self.memory_limit {
             const MAX_CAS_RETRIES: u32 = 1000;
             const MAX_MEMORY_WAIT_ATTEMPTS: u32 = 100;
+            const MAX_MEMORY_WAIT_DURATION: Duration = Duration::from_secs(300); // 5 minutes
             
             let mut memory_wait_attempts = 0;
+            let start_time = tokio::time::Instant::now();
+            
             loop {
-                if memory_wait_attempts >= MAX_MEMORY_WAIT_ATTEMPTS {
+                // Check both attempt count and duration limit
+                if memory_wait_attempts >= MAX_MEMORY_WAIT_ATTEMPTS || start_time.elapsed() >= MAX_MEMORY_WAIT_DURATION {
                     return Err(crate::consumer::error::ConsumerError::Backpressure(
-                        format!("Memory limit exhausted after {} attempts", MAX_MEMORY_WAIT_ATTEMPTS)
+                        format!("Memory limit exhausted after {} attempts or {} seconds", 
+                            memory_wait_attempts, start_time.elapsed().as_secs())
                     ));
                 }
                 
