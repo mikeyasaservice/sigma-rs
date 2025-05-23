@@ -120,8 +120,9 @@ impl NodeSimpleAnd {
 
     /// Reduce to more efficient representation if possible
     pub fn reduce(self) -> Result<Arc<dyn Branch>, SigmaError> {
+        let branches_len = self.branches.len();
         let mut iter = self.branches.into_iter();
-        match (iter.next(), iter.next(), iter.len()) {
+        match (iter.next(), iter.next(), branches_len.saturating_sub(2)) {
             (None, _, _) => Err(SigmaError::InvalidMatcher(
                 "Cannot reduce empty AND node - this indicates a parser bug".to_string()
             )),
@@ -176,8 +177,9 @@ impl NodeSimpleOr {
 
     /// Reduce to more efficient representation if possible
     pub fn reduce(self) -> Result<Arc<dyn Branch>, SigmaError> {
+        let branches_len = self.branches.len();
         let mut iter = self.branches.into_iter();
-        match (iter.next(), iter.next(), iter.len()) {
+        match (iter.next(), iter.next(), branches_len.saturating_sub(2)) {
             (None, _, _) => Err(SigmaError::InvalidMatcher(
                 "Cannot reduce empty OR node - this indicates a parser bug".to_string()
             )),
@@ -352,5 +354,94 @@ impl Branch for NodeAggregation {
             self.by_field,
             self.time_window
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    // Mock branch for testing
+    #[derive(Debug, Clone)]
+    struct MockBranch(String);
+
+    #[async_trait]
+    impl Branch for MockBranch {
+        async fn matches(&self, _event: &dyn Event) -> MatchResult {
+            MatchResult::matched()
+        }
+
+        fn describe(&self) -> String {
+            self.0.clone()
+        }
+    }
+
+    #[test]
+    fn test_simple_and_reduce_empty() {
+        let and_node = NodeSimpleAnd::new(vec![]);
+        let result = and_node.reduce();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_simple_and_reduce_single() {
+        let branch = Arc::new(MockBranch("test".to_string())) as Arc<dyn Branch>;
+        let and_node = NodeSimpleAnd::new(vec![branch.clone()]);
+        let result = and_node.reduce().unwrap();
+        assert_eq!(result.describe(), "test");
+    }
+
+    #[test]
+    fn test_simple_and_reduce_two() {
+        let branch1 = Arc::new(MockBranch("test1".to_string())) as Arc<dyn Branch>;
+        let branch2 = Arc::new(MockBranch("test2".to_string())) as Arc<dyn Branch>;
+        let and_node = NodeSimpleAnd::new(vec![branch1, branch2]);
+        let result = and_node.reduce().unwrap();
+        assert_eq!(result.describe(), "(test1 AND test2)");
+    }
+
+    #[test]
+    fn test_simple_and_reduce_multiple() {
+        let branches: Vec<Arc<dyn Branch>> = (0..5)
+            .map(|i| Arc::new(MockBranch(format!("test{}", i))) as Arc<dyn Branch>)
+            .collect();
+        let and_node = NodeSimpleAnd::new(branches);
+        let result = and_node.reduce().unwrap();
+        assert_eq!(result.describe(), "(test0 AND test1 AND test2 AND test3 AND test4)");
+    }
+
+    #[test]
+    fn test_simple_or_reduce_empty() {
+        let or_node = NodeSimpleOr::new(vec![]);
+        let result = or_node.reduce();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_simple_or_reduce_single() {
+        let branch = Arc::new(MockBranch("test".to_string())) as Arc<dyn Branch>;
+        let or_node = NodeSimpleOr::new(vec![branch.clone()]);
+        let result = or_node.reduce().unwrap();
+        assert_eq!(result.describe(), "test");
+    }
+
+    #[test]
+    fn test_simple_or_reduce_two() {
+        let branch1 = Arc::new(MockBranch("test1".to_string())) as Arc<dyn Branch>;
+        let branch2 = Arc::new(MockBranch("test2".to_string())) as Arc<dyn Branch>;
+        let or_node = NodeSimpleOr::new(vec![branch1, branch2]);
+        let result = or_node.reduce().unwrap();
+        assert_eq!(result.describe(), "(test1 OR test2)");
+    }
+
+    #[test]
+    fn test_simple_or_reduce_multiple() {
+        let branches: Vec<Arc<dyn Branch>> = (0..5)
+            .map(|i| Arc::new(MockBranch(format!("test{}", i))) as Arc<dyn Branch>)
+            .collect();
+        let or_node = NodeSimpleOr::new(branches);
+        let result = or_node.reduce().unwrap();
+        assert_eq!(result.describe(), "(test0 OR test1 OR test2 OR test3 OR test4)");
     }
 }

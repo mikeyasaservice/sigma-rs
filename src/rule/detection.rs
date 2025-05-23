@@ -105,7 +105,8 @@ selection:
   Image|endswith: '\cmd.exe'
         "#;
         
-        let detection: Detection = serde_yaml::from_str(yaml).unwrap();
+        let detection: Detection = serde_yaml::from_str(yaml)
+            .expect("Failed to parse valid detection YAML");
         assert_eq!(detection.condition(), Some("selection"));
         assert!(detection.contains_key("selection"));
     }

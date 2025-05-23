@@ -750,7 +750,7 @@ mod tests {
     use tower::ServiceExt;
     use std::sync::Arc;
     use tempfile::TempDir;
-    use crate::sigma::SigmaEngineBuilder;
+    use crate::SigmaEngineBuilder;
     
     // Helper function to create a test engine
     async fn create_test_engine() -> Arc<SigmaEngine> {
@@ -771,9 +771,9 @@ detection:
 "#;
         std::fs::write(rules_dir.join("test.yml"), rule_content).unwrap();
         
-        let builder = SigmaEngineBuilder::new();
-        let engine = SigmaEngine::new(builder).await.unwrap();
-        engine.load_rules_from_directory(&rules_dir.to_string_lossy()).await.unwrap();
+        let builder = SigmaEngineBuilder::new()
+            .add_rule_dir(rules_dir.to_string_lossy());
+        let engine = builder.build().await.unwrap();
         Arc::new(engine)
     }
     

@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use std::fmt::Debug;
 use crate::pattern::coercion::{coerce_for_string_match, coerce_for_numeric_match};
 use crate::event::{Event, Value};
+use tracing::warn;
 
 /// AST node implementations
 pub mod nodes;
@@ -12,9 +13,14 @@ fn value_to_json(value: Value) -> serde_json::Value {
     match value {
         Value::String(s) => serde_json::Value::String(s.to_string()),
         Value::Integer(i) => serde_json::Value::Number(serde_json::Number::from(i)),
-        Value::Float(f) => serde_json::Value::Number(
-            serde_json::Number::from_f64(f).unwrap_or_else(|| serde_json::Number::from(0))
-        ),
+        Value::Float(f) => {
+            if f.is_finite() {
+                serde_json::Value::Number(serde_json::Number::from_f64(f).unwrap())
+            } else {
+                warn!("Non-finite float value encountered: {:?}", f);
+                serde_json::Value::Null
+            }
+        },
         Value::Boolean(b) => serde_json::Value::Bool(b),
         Value::Array(arr) => serde_json::Value::Array(
             arr.into_iter().map(value_to_json).collect()
@@ -254,5 +260,38 @@ impl serde::Serialize for FieldRule {
         state.serialize_field("field", self.field.as_ref())?;
         state.serialize_field("pattern", &self.pattern)?;
         state.end()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_value_to_json_finite_float() {
+        let value = Value::Float(42.5);
+        let json = value_to_json(value);
+        assert_eq!(json, serde_json::Value::Number(serde_json::Number::from_f64(42.5).unwrap()));
+    }
+
+    #[test]
+    fn test_value_to_json_nan() {
+        let value = Value::Float(f64::NAN);
+        let json = value_to_json(value);
+        assert_eq!(json, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_value_to_json_positive_infinity() {
+        let value = Value::Float(f64::INFINITY);
+        let json = value_to_json(value);
+        assert_eq!(json, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_value_to_json_negative_infinity() {
+        let value = Value::Float(f64::NEG_INFINITY);
+        let json = value_to_json(value);
+        assert_eq!(json, serde_json::Value::Null);
     }
 }
