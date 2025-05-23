@@ -119,7 +119,7 @@ impl BackpressureController {
                     // Otherwise continue trying
                 } else {
                     // Memory limit reached, wait with exponential backoff
-                    let wait_time = Duration::from_millis(10 * (memory_wait_attempts + 1).min(100));
+                    let wait_time = Duration::from_millis((10 * (memory_wait_attempts + 1).min(100)) as u64);
                     tokio::time::sleep(wait_time).await;
                     memory_wait_attempts += 1;
                 }
