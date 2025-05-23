@@ -116,8 +116,21 @@ impl RetryPolicy {
         }
         
         let base_backoff = if self.exponential {
-            let multiplier = self.backoff_multiplier.powi(attempt as i32 - 1);
-            Duration::from_secs_f64(self.initial_backoff.as_secs_f64() * multiplier)
+            // Use safe multiplier calculation to prevent overflow
+            let safe_multiplier = if attempt > 30 {
+                // For very high attempts, just use max backoff
+                self.max_backoff.as_secs_f64() / self.initial_backoff.as_secs_f64()
+            } else {
+                // Calculate power safely using f64
+                let multiplier = self.backoff_multiplier.powf((attempt as i32 - 1) as f64);
+                // Ensure multiplier is finite and reasonable
+                if multiplier.is_finite() && multiplier < 1e6 {
+                    multiplier
+                } else {
+                    self.max_backoff.as_secs_f64() / self.initial_backoff.as_secs_f64()
+                }
+            };
+            Duration::from_secs_f64(self.initial_backoff.as_secs_f64() * safe_multiplier)
         } else {
             self.initial_backoff
         };

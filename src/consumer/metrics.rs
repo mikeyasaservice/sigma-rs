@@ -87,6 +87,8 @@ pub struct ConsumerMetrics {
     pub messages_failed: Arc<AtomicU64>,
     /// Messages sent to DLQ
     pub messages_dlq: Arc<AtomicU64>,
+    /// DLQ send failures
+    pub dlq_failures: Arc<AtomicU64>,
     /// Current consumer lag
     pub consumer_lag: Arc<AtomicU64>,
     /// Processing durations (fixed-size circular buffer)
@@ -125,6 +127,7 @@ impl ConsumerMetrics {
             messages_processed: Arc::new(AtomicU64::new(0)),
             messages_failed: Arc::new(AtomicU64::new(0)),
             messages_dlq: Arc::new(AtomicU64::new(0)),
+            dlq_failures: Arc::new(AtomicU64::new(0)),
             consumer_lag: Arc::new(AtomicU64::new(0)),
             processing_durations: Arc::new(RwLock::new(CircularBuffer::new(Self::MAX_DURATION_SAMPLES))),
             batch_durations: Arc::new(RwLock::new(CircularBuffer::new(Self::MAX_DURATION_SAMPLES))),
@@ -158,6 +161,11 @@ impl ConsumerMetrics {
     /// Record a message sent to DLQ
     pub fn increment_dlq(&self) {
         self.messages_dlq.fetch_add(1, Ordering::Relaxed);
+    }
+    
+    /// Record a DLQ send failure
+    pub fn increment_dlq_failures(&self) {
+        self.dlq_failures.fetch_add(1, Ordering::Relaxed);
     }
     
     /// Update consumer lag
@@ -321,6 +329,7 @@ impl ConsumerMetrics {
         self.messages_processed.store(0, Ordering::Relaxed);
         self.messages_failed.store(0, Ordering::Relaxed);
         self.messages_dlq.store(0, Ordering::Relaxed);
+        self.dlq_failures.store(0, Ordering::Relaxed);
         self.consumer_lag.store(0, Ordering::Relaxed);
         self.rebalance_count.store(0, Ordering::Relaxed);
         self.connection_errors.store(0, Ordering::Relaxed);

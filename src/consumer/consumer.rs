@@ -657,8 +657,10 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                     // Send to DLQ if configured and max retries exceeded
                     if task.attempt >= config.dlq_after_retries {
                         if let Some(dlq) = &dlq_producer {
-                            if let Err(e) = dlq.send_message(&task.message, &e.to_string(), task.attempt).await {
-                                error!("Failed to send to DLQ: {}", e);
+                            if let Err(dlq_err) = dlq.send_message(&task.message, &e.to_string(), task.attempt).await {
+                                error!("Failed to send to DLQ: {}", dlq_err);
+                                metrics.increment_dlq_failures();
+                                metrics.record_error("dlq_send_failed");
                             } else {
                                 metrics.increment_dlq();
                             }
@@ -763,8 +765,10 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                     // Send to DLQ if configured and max retries exceeded
                     if attempt >= config.dlq_after_retries {
                         if let Some(dlq) = dlq_producer {
-                            if let Err(e) = dlq.send_message(&task.message, &e.to_string(), attempt).await {
-                                error!("Failed to send to DLQ: {}", e);
+                            if let Err(dlq_err) = dlq.send_message(&task.message, &e.to_string(), attempt).await {
+                                error!("Failed to send to DLQ: {}", dlq_err);
+                                metrics.increment_dlq_failures();
+                                metrics.record_error("dlq_send_failed");
                             } else {
                                 metrics.increment_dlq();
                             }
