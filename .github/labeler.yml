@@ -1,0 +1,68 @@
+# Add labels to PRs based on changed files
+
+documentation:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.md'
+      - 'docs/**'
+
+rust:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+consumer:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/consumer/**'
+      - 'tests/consumer/**'
+
+parser:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/parser/**'
+      - 'tests/parser*'
+
+lexer:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/lexer/**'
+      - 'tests/lexer*'
+
+pattern:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/pattern/**'
+      - 'tests/pattern*'
+
+rule:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/rule/**'
+      - 'tests/rule*'
+
+tests:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'tests/**'
+      - '**/*_test.rs'
+      - '**/*_tests.rs'
+
+benchmarks:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'benches/**'
+
+ci:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**'
+      - '.pre-commit-config.yaml'
+
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'Cargo.toml'
+      - 'Cargo.lock'

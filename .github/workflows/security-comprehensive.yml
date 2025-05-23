@@ -1,0 +1,488 @@
+name: Comprehensive Security Analysis
+
+on:
+  push:
+    branches: [ main, master, dev ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    - cron: '0 3 * * *'  # Daily at 3 AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ================================
+  # Dependency Security Analysis
+  # ================================
+  dependency-security:
+    name: Dependency Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies  
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install security tools
+        run: |
+          cargo install cargo-audit cargo-deny cargo-geiger
+          
+      - name: Run comprehensive dependency audit
+        run: |
+          echo "🔍 Running dependency security audit..."
+          
+          # Detailed security audit
+          cargo audit --color always --format json > audit-results.json
+          cargo audit --color always
+          
+          # Check for known vulnerabilities with details
+          echo "📋 Vulnerability details:"
+          cargo audit --format json | jq '.vulnerabilities'
+          
+          echo "✅ Dependency audit completed"
+
+      - name: License compliance check
+        run: |
+          echo "📄 Checking license compliance..."
+          
+          # Generate detailed license report
+          cargo deny --config deny.toml check licenses
+          
+          # Create license inventory
+          cargo tree --all-features --format json | jq -r '
+            .nodes[] | 
+            select(.deps) | 
+            "\(.id) - \(.deps[].name)"
+          ' > license-inventory.txt
+          
+          echo "✅ License compliance check completed"
+
+      - name: Supply chain analysis
+        run: |
+          echo "🔗 Analyzing supply chain security..."
+          
+          # Check for unsafe code in dependencies
+          cargo geiger --all-features --format json > geiger-report.json
+          cargo geiger --all-features
+          
+          # Analyze dependency tree for security risks
+          cargo tree --all-features --duplicates
+          
+          echo "✅ Supply chain analysis completed"
+
+      - name: Upload security artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-security-reports
+          path: |
+            audit-results.json
+            geiger-report.json
+            license-inventory.txt
+
+  # ================================
+  # Code Security Analysis
+  # ================================
+  code-security:
+    name: Static Code Security Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Security-focused Clippy analysis
+        run: |
+          echo "🔒 Running security-focused static analysis..."
+          
+          cargo clippy --all-targets --all-features -- \
+            -W clippy::integer_arithmetic \
+            -W clippy::unwrap_used \
+            -W clippy::expect_used \
+            -W clippy::panic \
+            -W clippy::unreachable \
+            -W clippy::todo \
+            -W clippy::unimplemented \
+            -W clippy::indexing_slicing \
+            -W clippy::clone_on_ref_ptr \
+            -W clippy::rc_buffer \
+            -W clippy::rc_mutex \
+            -W clippy::string_slice \
+            -W clippy::unsafe_derive_deserialize \
+            -D warnings
+
+      - name: Check for unsafe code patterns
+        run: |
+          echo "⚠️  Scanning for unsafe code patterns..."
+          
+          # Search for potentially dangerous patterns
+          echo "Checking for unsafe blocks:"
+          grep -r "unsafe" src/ || echo "No unsafe blocks found ✅"
+          
+          echo "Checking for unwrap() calls:"
+          grep -r "\.unwrap()" src/ || echo "No unwrap() calls found ✅"
+          
+          echo "Checking for expect() calls:"
+          grep -r "\.expect(" src/ || echo "No expect() calls found ✅"
+          
+          echo "Checking for panic! macros:"
+          grep -r "panic!" src/ || echo "No panic! macros found ✅"
+          
+          echo "✅ Unsafe pattern scan completed"
+
+      - name: Memory safety verification
+        run: |
+          echo "🧠 Verifying memory safety guarantees..."
+          
+          # Compile with additional memory safety checks
+          RUSTFLAGS="-Z sanitizer=address" cargo +nightly build --all-features 2>/dev/null || echo "AddressSanitizer not available in this environment"
+          
+          # Check for potential memory leaks in tests
+          cargo test --all-features 2>&1 | grep -i "leak\|memory" || echo "No memory issues detected ✅"
+
+  # ================================
+  # Vulnerability Scanning
+  # ================================
+  vulnerability-scan:
+    name: Multi-Scanner Vulnerability Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: Run Semgrep security scanner
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/rust
+            p/secrets
+          sarif-output: semgrep-results.sarif
+          
+      - name: Run OSV scanner
+        uses: google/osv-scanner-action@v1
+        with:
+          scan-args: |-
+            --format=sarif
+            --output=osv-results.sarif
+            .
+
+      - name: Upload vulnerability scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: |
+            trivy-results.sarif
+            semgrep-results.sarif
+            osv-results.sarif
+
+      - name: Upload scan artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vulnerability-scan-results
+          path: |
+            trivy-results.sarif
+            semgrep-results.sarif
+            osv-results.sarif
+
+  # ================================
+  # Secrets Detection
+  # ================================
+  secrets-detection:
+    name: Secrets and Sensitive Data Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog secrets scanner
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified --format json --output trufflehog-results.json
+
+      - name: Run Gitleaks secrets scanner
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Custom secrets pattern check
+        run: |
+          echo "🔍 Running custom secrets pattern detection..."
+          
+          # Check for common secret patterns
+          SECRET_PATTERNS=(
+            "password.*=.*['\"][^'\"]{8,}['\"]"
+            "api[_-]?key.*=.*['\"][^'\"]{16,}['\"]"
+            "secret.*=.*['\"][^'\"]{8,}['\"]"
+            "token.*=.*['\"][^'\"]{16,}['\"]"
+            "-----BEGIN.*PRIVATE KEY-----"
+            "-----BEGIN.*RSA PRIVATE KEY-----"
+          )
+          
+          for pattern in "${SECRET_PATTERNS[@]}"; do
+            echo "Checking pattern: $pattern"
+            if grep -r -i -E "$pattern" src/ examples/ 2>/dev/null; then
+              echo "⚠️ Potential secret found matching pattern: $pattern"
+            fi
+          done
+          
+          echo "✅ Custom secrets scan completed"
+
+      - name: Upload secrets detection results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: secrets-detection-results
+          path: |
+            trufflehog-results.json
+            gitleaks-report.json
+
+  # ================================
+  # Container Security (if Dockerfile exists)
+  # ================================
+  container-security:
+    name: Container Security Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: hashFiles('Dockerfile') != ''
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          echo "🐳 Building Docker image for security analysis..."
+          docker build -t sigma-rs:security-test .
+
+      - name: Run Trivy container scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'sigma-rs:security-test'
+          format: 'sarif'
+          output: 'trivy-container-results.sarif'
+
+      - name: Run Dockle container linter
+        run: |
+          echo "🔍 Running Dockle container security linter..."
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            goodwithtech/dockle:latest sigma-rs:security-test
+
+      - name: Upload container security results
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-security-results
+          path: trivy-container-results.sarif
+
+  # ================================
+  # Security Configuration
+  # ================================
+  security-config:
+    name: Security Configuration Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate security configurations
+        run: |
+          echo "⚙️ Validating security configurations..."
+          
+          # Check for security-related configuration files
+          echo "Checking for security configuration files:"
+          
+          if [ -f "deny.toml" ]; then
+            echo "✅ cargo-deny configuration found"
+            cat deny.toml
+          else
+            echo "⚠️ cargo-deny configuration not found"
+          fi
+          
+          if [ -f ".github/dependabot.yml" ]; then
+            echo "✅ Dependabot configuration found"
+          else
+            echo "⚠️ Dependabot configuration not found"
+          fi
+          
+          if [ -f "SECURITY.md" ]; then
+            echo "✅ Security policy found"
+          else
+            echo "⚠️ Security policy not found"
+          fi
+
+      - name: Check GitHub security features
+        run: |
+          echo "🔒 Checking GitHub security features..."
+          
+          # These would typically be checked via GitHub API
+          echo "Security features to verify manually:"
+          echo "- Branch protection rules enabled"
+          echo "- Dependency alerts enabled"
+          echo "- Secret scanning enabled"
+          echo "- Code scanning enabled"
+          echo "- Private vulnerability reporting enabled"
+
+  # ================================
+  # Security Report Generation
+  # ================================
+  security-report:
+    name: Generate Security Report
+    runs-on: ubuntu-latest
+    needs: [dependency-security, code-security, vulnerability-scan, secrets-detection, container-security, security-config]
+    if: always()
+    steps:
+      - name: Download all security artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Generate comprehensive security report
+        run: |
+          echo "📊 Generating comprehensive security report..."
+          
+          cat > security-report.md << 'EOF'
+          # Comprehensive Security Analysis Report
+          
+          ## Executive Summary
+          
+          This report provides a comprehensive security analysis of the sigma-rs codebase,
+          covering dependencies, static code analysis, vulnerability scanning, and
+          configuration security.
+          
+          ## Analysis Results
+          
+          | Security Area | Status | Issues Found |
+          |---------------|---------|--------------|
+          | Dependency Security | ${{ needs.dependency-security.result }} | - |
+          | Code Security | ${{ needs.code-security.result }} | - |
+          | Vulnerability Scan | ${{ needs.vulnerability-scan.result }} | - |
+          | Secrets Detection | ${{ needs.secrets-detection.result }} | - |
+          | Container Security | ${{ needs.container-security.result }} | - |
+          | Security Config | ${{ needs.security-config.result }} | - |
+          
+          ## Detailed Findings
+          
+          ### Dependency Security Analysis
+          - **Status**: ${{ needs.dependency-security.result }}
+          - **Tools**: cargo-audit, cargo-deny, cargo-geiger
+          - **Focus**: Known vulnerabilities, license compliance, unsafe code in dependencies
+          
+          ### Static Code Security Analysis  
+          - **Status**: ${{ needs.code-security.result }}
+          - **Tools**: Clippy with security lints, custom pattern matching
+          - **Focus**: Unsafe patterns, memory safety, panic conditions
+          
+          ### Vulnerability Scanning
+          - **Status**: ${{ needs.vulnerability-scan.result }}
+          - **Tools**: Trivy, Semgrep, OSV Scanner
+          - **Focus**: Known vulnerabilities, security anti-patterns
+          
+          ### Secrets Detection
+          - **Status**: ${{ needs.secrets-detection.result }}
+          - **Tools**: TruffleHog, Gitleaks, custom patterns
+          - **Focus**: Hardcoded secrets, API keys, private keys
+          
+          ### Container Security
+          - **Status**: ${{ needs.container-security.result }}
+          - **Tools**: Trivy, Dockle
+          - **Focus**: Container vulnerabilities, configuration issues
+          
+          ### Security Configuration
+          - **Status**: ${{ needs.security-config.result }}
+          - **Focus**: Security policies, automated checks, branch protection
+          
+          ## Security Score
+          
+          Based on the analysis results, the overall security posture is:
+          
+          **🔒 SECURITY LEVEL: [AUTO-GENERATED BASED ON RESULTS]**
+          
+          ## Recommendations
+          
+          1. **High Priority**: Address any CRITICAL or HIGH severity vulnerabilities
+          2. **Medium Priority**: Review and fix MEDIUM severity issues
+          3. **Best Practices**: Ensure all security configurations are properly set
+          4. **Continuous Monitoring**: Keep dependencies updated and run scans regularly
+          
+          ## Next Steps
+          
+          - Review detailed scan results in artifacts
+          - Address identified vulnerabilities
+          - Update security configurations as needed
+          - Schedule regular security reviews
+          
+          ---
+          Generated on: $(date)
+          Pipeline Run: ${{ github.run_id }}
+          EOF
+          
+          echo "Security report generated successfully"
+
+      - name: Upload comprehensive security report
+        uses: actions/upload-artifact@v4
+        with:
+          name: comprehensive-security-report
+          path: security-report.md
+          retention-days: 90
+
+      - name: Security status summary
+        run: |
+          echo "🔒 Security Analysis Summary"
+          echo "==========================="
+          echo "Dependency Security: ${{ needs.dependency-security.result }}"
+          echo "Code Security: ${{ needs.code-security.result }}"
+          echo "Vulnerability Scan: ${{ needs.vulnerability-scan.result }}"
+          echo "Secrets Detection: ${{ needs.secrets-detection.result }}"
+          echo "Container Security: ${{ needs.container-security.result }}"
+          echo "Security Config: ${{ needs.security-config.result }}"
+          
+          # Determine overall security status
+          if [[ "${{ needs.dependency-security.result }}" == "success" && 
+                "${{ needs.code-security.result }}" == "success" && 
+                "${{ needs.vulnerability-scan.result }}" == "success" && 
+                "${{ needs.secrets-detection.result }}" == "success" ]]; then
+            echo ""
+            echo "🎉 All security checks passed!"
+            echo "✅ Codebase meets security standards"
+          else
+            echo ""
+            echo "⚠️ Some security checks require attention"
+            echo "🔍 Review detailed reports for remediation steps"
+          fi

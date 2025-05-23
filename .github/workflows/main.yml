@@ -1,0 +1,430 @@
+name: Main CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master, dev ]
+  pull_request:
+    branches: [ main, master ]
+
+# Cancel previous runs on new push
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: "-D warnings -W clippy::pedantic -W clippy::nursery"
+  CARGO_TERM_COLOR: always
+  MINIMUM_COVERAGE: 85
+  RUST_LOG: sigma_rs=debug
+
+jobs:
+  # ================================
+  # STAGE 1: Code Quality Gates
+  # ================================
+  code-quality:
+    name: Code Quality Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: quality-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: |
+          cargo fmt --all -- --check
+          if [ $? -ne 0 ]; then
+            echo "❌ Code formatting check failed"
+            echo "💡 Run 'cargo fmt' to fix formatting issues"
+            exit 1
+          fi
+
+      - name: Run clippy lints
+        run: |
+          cargo clippy --all-targets --all-features -- \
+            -D warnings \
+            -W clippy::pedantic \
+            -W clippy::nursery \
+            -W clippy::cognitive_complexity \
+            -W clippy::cyclomatic_complexity
+          
+      - name: Check documentation
+        run: |
+          cargo doc --all-features --no-deps --document-private-items
+          RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
+
+      - name: Verify Cargo.toml
+        run: |
+          cargo verify-project
+          cargo check --workspace --all-targets --all-features
+
+  # ================================
+  # STAGE 2: Security Scanning
+  # ================================
+  security-scan:
+    name: Security Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: code-quality
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install security tools
+        run: |
+          cargo install cargo-audit cargo-geiger cargo-deny
+          
+      - name: Security audit
+        run: |
+          cargo audit --color always
+          echo "✅ Security audit passed"
+
+      - name: Check unsafe code
+        run: |
+          echo "🔍 Checking for unsafe code usage..."
+          cargo geiger --all-features --all-targets
+          
+      - name: License and dependency check
+        run: |
+          cargo deny check
+
+      - name: Run Trivy scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Secrets scanning
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+  # ================================
+  # STAGE 3: Cross-Platform Testing
+  # ================================
+  test-matrix:
+    name: Test Suite (${{ matrix.os }}, ${{ matrix.rust }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    needs: security-scan
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable, beta]
+        include:
+          - os: ubuntu-latest
+            rust: nightly
+            experimental: true
+        exclude:
+          - os: windows-latest
+            rust: beta
+          - os: macos-latest
+            rust: beta
+    continue-on-error: ${{ matrix.experimental || false }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust ${{ matrix.rust }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: test-${{ matrix.os }}-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Build all features
+        run: cargo build --all-features --verbose
+
+      - name: Run unit tests
+        run: cargo test --lib --all-features --verbose -- --nocapture
+
+      - name: Run integration tests
+        run: cargo test --test '*' --all-features --verbose -- --test-threads=1
+
+      - name: Run doc tests
+        run: cargo test --doc --all-features --verbose
+
+      - name: Test individual features
+        run: |
+          echo "Testing with no default features..."
+          cargo test --no-default-features --verbose
+          
+          echo "Testing kafka feature..."
+          cargo test --features kafka --verbose
+          
+          echo "Testing metrics feature..."
+          cargo test --features metrics --verbose
+          
+          echo "Testing service feature..."
+          cargo test --features service --verbose
+
+      - name: Run examples (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cargo run --example rule_validator --all-features
+          cargo run --example event_detector --all-features
+          cargo run --example simple_detection --all-features
+
+  # ================================
+  # STAGE 4: Performance & Coverage
+  # ================================
+  performance-analysis:
+    name: Performance & Coverage Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: test-matrix
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install analysis tools
+        run: |
+          cargo install cargo-tarpaulin criterion-table
+
+      - name: Generate coverage report
+        run: |
+          echo "🔍 Generating coverage report..."
+          cargo tarpaulin --all-features --workspace --timeout 300 \
+            --out Xml --out Html --output-dir coverage/
+          
+          # Extract coverage percentage
+          COVERAGE=$(grep -oP 'line-rate="\K[^"]+' coverage/cobertura.xml | head -1)
+          COVERAGE_PERCENT=$(echo "$COVERAGE * 100" | bc -l | cut -d. -f1)
+          
+          echo "📊 Coverage: ${COVERAGE_PERCENT}%"
+          echo "COVERAGE_PERCENT=${COVERAGE_PERCENT}" >> $GITHUB_ENV
+          
+          # Check coverage threshold
+          if [ "${COVERAGE_PERCENT}" -lt "${MINIMUM_COVERAGE}" ]; then
+            echo "❌ Coverage ${COVERAGE_PERCENT}% below minimum ${MINIMUM_COVERAGE}%"
+            exit 1
+          else
+            echo "✅ Coverage ${COVERAGE_PERCENT}% meets minimum ${MINIMUM_COVERAGE}%"
+          fi
+
+      - name: Run performance benchmarks
+        run: |
+          echo "⚡ Running performance benchmarks..."
+          cargo bench --all-features -- --output-format json | tee benchmark-results.json
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/cobertura.xml
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 30
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmark-results.json
+          retention-days: 30
+
+  # ================================
+  # STAGE 5: Integration Testing
+  # ================================
+  integration-tests:
+    name: Integration Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: performance-analysis
+    services:
+      kafka:
+        image: confluentinc/cp-kafka:latest
+        env:
+          KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+        ports:
+          - 9092:9092
+      
+      zookeeper:
+        image: confluentinc/cp-zookeeper:latest
+        env:
+          ZOOKEEPER_CLIENT_PORT: 2181
+          ZOOKEEPER_TICK_TIME: 2000
+        ports:
+          - 2181:2181
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Wait for Kafka
+        run: |
+          echo "⏳ Waiting for Kafka to be ready..."
+          timeout 60 sh -c 'until nc -z localhost 9092; do sleep 1; done'
+          echo "✅ Kafka is ready"
+
+      - name: Run integration tests with Kafka
+        run: |
+          echo "🔗 Running Kafka integration tests..."
+          cargo test --test '*integration*' --features kafka -- --test-threads=1
+          
+      - name: Run consumer integration tests
+        run: |
+          echo "🏃 Running consumer integration tests..."
+          cargo test consumer_integration --features kafka -- --test-threads=1
+
+      - name: Test stream processing examples
+        run: |
+          echo "🌊 Testing stream processing..."
+          timeout 30 cargo run --example stream_detector --features kafka &
+          PID=$!
+          sleep 10
+          kill $PID || true
+
+  # ================================
+  # STAGE 6: Release Preparation
+  # ================================
+  release-ready:
+    name: Release Readiness Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: integration-tests
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify package can be published
+        run: |
+          echo "📦 Verifying package for publication..."
+          cargo package --allow-dirty
+          cargo publish --dry-run --all-features
+
+      - name: Build release binary
+        run: |
+          echo "🔨 Building optimized release binary..."
+          cargo build --release --all-features
+          
+          # Test the binary
+          ./target/release/sigma-rs --help > /dev/null
+          echo "✅ Release binary works correctly"
+
+      - name: Generate artifacts
+        run: |
+          echo "📋 Generating release artifacts..."
+          
+          # Create SBOM
+          cargo tree --all-features --format json > sbom.json
+          
+          # Create dependency report
+          cargo tree --all-features > dependencies.txt
+          
+          # Package binary
+          tar czf sigma-rs-linux-x64.tar.gz -C target/release sigma-rs
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            sigma-rs-linux-x64.tar.gz
+            sbom.json
+            dependencies.txt
+          retention-days: 90
+
+  # ================================
+  # FINAL: Status Report
+  # ================================
+  ci-success:
+    name: ✅ CI Pipeline Success
+    runs-on: ubuntu-latest
+    needs: [code-quality, security-scan, test-matrix, performance-analysis, integration-tests, release-ready]
+    if: always()
+    steps:
+      - name: Check pipeline status
+        run: |
+          if [ "${{ needs.code-quality.result }}" != "success" ] || \
+             [ "${{ needs.security-scan.result }}" != "success" ] || \
+             [ "${{ needs.test-matrix.result }}" != "success" ] || \
+             [ "${{ needs.performance-analysis.result }}" != "success" ] || \
+             [ "${{ needs.integration-tests.result }}" != "success" ]; then
+            echo "❌ CI Pipeline failed"
+            echo "Code Quality: ${{ needs.code-quality.result }}"
+            echo "Security Scan: ${{ needs.security-scan.result }}"
+            echo "Test Matrix: ${{ needs.test-matrix.result }}"
+            echo "Performance: ${{ needs.performance-analysis.result }}"
+            echo "Integration: ${{ needs.integration-tests.result }}"
+            exit 1
+          else
+            echo "🎉 All CI stages completed successfully!"
+            echo "✅ Code quality checks passed"
+            echo "🔒 Security analysis passed"
+            echo "🧪 Cross-platform tests passed"
+            echo "📊 Performance benchmarks completed"
+            echo "🔗 Integration tests passed"
+            echo "📦 Release preparation completed"
+          fi

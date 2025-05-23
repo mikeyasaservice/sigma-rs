@@ -1,5 +1,4 @@
-use sigma_rs::detection::Detection;
-use sigma_rs::lexer::Lexer;
+use sigma_rs::rule::Detection;
 use sigma_rs::parser::{Parser, ParseError};
 use std::collections::HashMap;
 use serde_json::json;
@@ -17,8 +16,7 @@ async fn test_simple_and_condition() {
         "CommandLine|contains": "mimikatz"
     }));
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
     assert!(result.is_ok());
@@ -37,8 +35,7 @@ async fn test_simple_or_condition() {
         "Image|endswith": "\\powershell.exe" 
     }));
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
     assert!(result.is_ok());
@@ -57,14 +54,9 @@ async fn test_not_condition() {
         "User": "SYSTEM"
     }));
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
-    match &result {
-        Ok(_) => println!("Parser succeeded"),
-        Err(e) => println!("Parser error: {:?}", e),
-    }
     assert!(result.is_ok());
     assert!(parser.result().is_some());
 }
@@ -87,8 +79,7 @@ async fn test_complex_parentheses() {
         "User": "LOCAL SERVICE"
     }));
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
     assert!(result.is_ok());
@@ -110,8 +101,7 @@ async fn test_all_of_statement() {
         "Level": 4
     }));
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
     assert!(result.is_ok());
@@ -130,8 +120,7 @@ async fn test_one_of_statement() {
         "Image|endswith": "\\powershell.exe"
     }));
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
     assert!(result.is_ok());
@@ -150,8 +139,7 @@ async fn test_all_of_them() {
         "Channel": "Security"
     }));
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
     assert!(result.is_ok());
@@ -171,8 +159,7 @@ async fn test_array_values() {
         ]
     }));
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
     assert!(result.is_ok());
@@ -200,8 +187,7 @@ async fn test_nested_complex_condition() {
         "User": "SYSTEM"
     }));
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
     assert!(result.is_ok());
@@ -216,8 +202,7 @@ async fn test_invalid_token_sequence() {
     detection.insert("selection1".to_string(), json!("value1"));
     detection.insert("selection2".to_string(), json!("value2"));
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
     assert!(matches!(result, Err(ParseError::InvalidTokenSequence { .. })));
@@ -231,8 +216,7 @@ async fn test_missing_selection() {
     detection.insert("selection1".to_string(), json!("value1"));
     // selection2 is missing
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
     assert!(matches!(result, Err(ParseError::MissingConditionItem { .. })));
@@ -246,8 +230,7 @@ async fn test_unbalanced_parentheses() {
     detection.insert("selection1".to_string(), json!("value1"));
     detection.insert("selection2".to_string(), json!("value2"));
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
     // Should fail during collection phase due to incomplete sequence
@@ -260,8 +243,7 @@ async fn test_empty_condition() {
     let mut detection = Detection::new();
     detection.insert("condition".to_string(), json!(condition));
 
-    let lexer = Lexer::new(condition.to_string());
-    let mut parser = Parser::new(lexer, detection, false);
+    let mut parser = Parser::new(detection, false);
     
     let result = parser.run().await;
     assert!(result.is_err());
@@ -277,14 +259,12 @@ async fn test_whitespace_handling() {
     }));
 
     // Test with whitespace collapse
-    let lexer1 = Lexer::new(condition.to_string());
-    let mut parser1 = Parser::new(lexer1, detection.clone(), false);
+    let mut parser1 = Parser::new(detection.clone(), false);
     let result1 = parser1.run().await;
     assert!(result1.is_ok());
 
     // Test without whitespace collapse
-    let lexer2 = Lexer::new(condition.to_string());
-    let mut parser2 = Parser::new(lexer2, detection, true);
+    let mut parser2 = Parser::new(detection, true);
     let result2 = parser2.run().await;
     assert!(result2.is_ok());
 }

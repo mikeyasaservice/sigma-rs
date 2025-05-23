@@ -45,6 +45,39 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         // Validate configuration
         config.validate().map_err(ConsumerError::ConfigError)?;
         
+        // Define allowed Kafka properties for security
+        const ALLOWED_KAFKA_PROPS: &[&str] = &[
+            // Compression settings
+            "compression.type",
+            "compression.level",
+            // Fetch settings
+            "fetch.min.bytes",
+            "fetch.max.wait.ms",
+            "fetch.max.bytes",
+            "max.partition.fetch.bytes",
+            // Request settings
+            "request.timeout.ms",
+            "metadata.max.age.ms",
+            "receive.buffer.bytes",
+            "send.buffer.bytes",
+            // Consumer settings
+            "queued.min.messages",
+            "queued.max.messages.kbytes",
+            "fetch.error.backoff.ms",
+            "fetch.message.max.bytes",
+            // Performance settings
+            "enable.idempotence",
+            "message.max.bytes",
+            // Connection settings
+            "reconnect.backoff.ms",
+            "reconnect.backoff.max.ms",
+            "connections.max.idle.ms",
+            "socket.keepalive.enable",
+            // Monitoring
+            "statistics.interval.ms",
+            "enable.metrics.push",
+        ];
+        
         // Create Kafka consumer
         let mut client_config = ClientConfig::new();
         client_config
@@ -56,8 +89,14 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             .set("max.poll.interval.ms", config.max_poll_interval_ms.to_string())
             .set("auto.offset.reset", &config.auto_offset_reset);
         
-        // Add custom properties
+        // Add custom properties with validation
         for (key, value) in &config.kafka_properties {
+            if !ALLOWED_KAFKA_PROPS.contains(&key.as_str()) {
+                return Err(ConsumerError::ConfigError(
+                    format!("Disallowed Kafka property '{}'. Allowed properties: {:?}", 
+                            key, ALLOWED_KAFKA_PROPS)
+                ));
+            }
             client_config.set(key, value);
         }
         
@@ -180,12 +219,35 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         // Close channel to stop accepting new messages
         // The consumer loop will stop when shutdown signal is sent
         
-        // Allow time for workers to finish processing
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        // Adaptive wait for inflight messages with timeout
+        let shutdown_deadline = Instant::now() + Duration::from_secs(30);
+        let mut last_inflight_count = None;
         
-        // Commit final offsets
-        if let Err(e) = self.offset_manager.commit_offsets(&*self.consumer).await {
-            error!("Failed to commit final offsets: {}", e);
+        while self.shutdown_state.has_inflight_messages().await && Instant::now() < shutdown_deadline {
+            let current_inflight = self.shutdown_state.inflight_count().await;
+            
+            // Log progress periodically
+            if last_inflight_count != Some(current_inflight) {
+                info!("Waiting for {} inflight messages to complete", current_inflight);
+                last_inflight_count = Some(current_inflight);
+            }
+            
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        
+        if self.shutdown_state.has_inflight_messages().await {
+            warn!("Shutdown timeout reached with {} messages still in flight", 
+                  self.shutdown_state.inflight_count().await);
+        }
+        
+        // Commit final offsets with timeout
+        match tokio::time::timeout(
+            Duration::from_secs(10),
+            self.offset_manager.commit_offsets(&*self.consumer)
+        ).await {
+            Ok(Ok(())) => info!("Final offsets committed successfully"),
+            Ok(Err(e)) => error!("Failed to commit final offsets: {}", e),
+            Err(_) => error!("Timeout committing final offsets"),
         }
         
         // Graceful shutdown of background tasks with timeout
@@ -313,36 +375,92 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         mut main_rx: mpsc::Receiver<ProcessingTask>,
         worker_senders: Vec<mpsc::Sender<ProcessingTask>>,
     ) -> JoinHandle<()> {
-        let _shutdown_state = self.shutdown_state.clone();
+        let shutdown_state = self.shutdown_state.clone();
+        
+        // Worker health tracking with circuit breaker pattern
+        #[derive(Debug)]
+        struct WorkerState {
+            failures: u32,
+            last_failure: Option<Instant>,
+            circuit_open: bool,
+        }
         
         tokio::spawn(async move {
             info!("Distributor task started with {} workers", worker_senders.len());
             let mut current_worker = 0;
             
+            // Initialize worker states
+            let mut worker_states: Vec<WorkerState> = (0..worker_senders.len())
+                .map(|_| WorkerState {
+                    failures: 0,
+                    last_failure: None,
+                    circuit_open: false,
+                })
+                .collect();
+            
+            const MAX_FAILURES: u32 = 5;
+            const CIRCUIT_RESET_DURATION: Duration = Duration::from_secs(30);
+            
             while let Some(mut task) = main_rx.recv().await {
                 // Try to distribute to workers, starting with current worker
                 let mut sent = false;
+                let mut attempts = 0;
                 
-                for attempt in 0..worker_senders.len() {
-                    let worker_idx = (current_worker + attempt) % worker_senders.len();
+                for _ in 0..worker_senders.len() {
+                    let worker_idx = (current_worker + attempts) % worker_senders.len();
+                    let worker_state = &mut worker_states[worker_idx];
+                    
+                    // Check if circuit should be reset
+                    if worker_state.circuit_open {
+                        if let Some(last_failure) = worker_state.last_failure {
+                            if last_failure.elapsed() > CIRCUIT_RESET_DURATION {
+                                info!("Resetting circuit for worker {}", worker_idx);
+                                worker_state.circuit_open = false;
+                                worker_state.failures = 0;
+                            }
+                        }
+                    }
+                    
+                    // Skip if circuit is open
+                    if worker_state.circuit_open {
+                        attempts += 1;
+                        continue;
+                    }
                     
                     match worker_senders[worker_idx].send(task).await {
                         Ok(()) => {
                             sent = true;
+                            // Reset failure count on success
+                            worker_state.failures = 0;
                             break;
                         }
                         Err(send_error) => {
-                            if attempt == 0 {
-                                warn!("Worker {} channel closed, attempting redistribution", worker_idx);
-                            }
                             task = send_error.0; // Extract the task from the SendError
+                            worker_state.failures += 1;
+                            worker_state.last_failure = Some(Instant::now());
+                            
+                            if worker_state.failures >= MAX_FAILURES {
+                                warn!("Worker {} circuit breaker opened after {} failures", 
+                                      worker_idx, MAX_FAILURES);
+                                worker_state.circuit_open = true;
+                            }
+                            
+                            attempts += 1;
                         }
                     }
                 }
                 
                 if !sent {
-                    error!("Failed to distribute task to any worker");
-                    break;
+                    error!("Failed to distribute task to any worker - all circuits may be open");
+                    // Ensure inflight message is removed to prevent deadlock
+                    shutdown_state.remove_inflight_message().await;
+                    
+                    // Check if all workers are failed
+                    let all_failed = worker_states.iter().all(|s| s.circuit_open);
+                    if all_failed {
+                        error!("All worker circuits are open, exiting distributor");
+                        break;
+                    }
                 }
                 
                 // Move to next worker
@@ -497,7 +615,15 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             shutdown_state.add_inflight_message().await;
                 
             // Acquire backpressure permit
-            let _permit = backpressure.acquire().await;
+            let _permit = match backpressure.acquire().await {
+                Ok(permit) => permit,
+                Err(e) => {
+                    error!("Failed to acquire backpressure permit: {}", e);
+                    metrics.record_error("backpressure_error");
+                    shutdown_state.remove_inflight_message().await;
+                    continue;
+                }
+            };
             
             // Process message with retry
             let result = process_message_with_retry(
@@ -584,9 +710,23 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         
         // Acquire backpressure permits for the entire batch
         let mut permits = Vec::with_capacity(batch.len());
-        for _ in batch {
-            let permit = backpressure.acquire().await;
-            permits.push(permit);
+        for i in 0..batch.len() {
+            match backpressure.acquire().await {
+                Ok(permit) => permits.push(permit),
+                Err(e) => {
+                    error!("Failed to acquire backpressure permit for batch item {}: {}", i, e);
+                    metrics.record_error("backpressure_error");
+                    // Remove the inflight messages we added for items we couldn't get permits for
+                    for _ in i..batch.len() {
+                        shutdown_state.remove_inflight_message().await;
+                    }
+                    // Process only the items we got permits for
+                    if i == 0 {
+                        return; // No permits acquired, can't process any items
+                    }
+                    break;
+                }
+            }
         }
         
         // Process each message in the batch

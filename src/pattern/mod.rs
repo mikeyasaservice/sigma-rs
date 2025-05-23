@@ -4,6 +4,7 @@
 pub mod coercion;
 pub mod escape;
 pub mod factory;
+pub mod intern;
 pub mod num_matcher;
 pub mod security;
 pub mod string_matcher;
@@ -14,8 +15,9 @@ pub mod whitespace;
 mod test_escape;
 
 pub use coercion::*;
-pub use escape::escape_sigma_for_glob;
+pub use escape::{escape_sigma_for_glob, escape_sigma_for_glob_cow};
 pub use factory::*;
+pub use intern::{intern_pattern, global_interner_stats, InternerStats};
 pub use num_matcher::*;
 pub use security::*;
 pub use string_matcher::*;
@@ -34,12 +36,19 @@ pub enum IdentifierType {
 /// Text pattern modifiers for string matching
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextPatternModifier {
+    /// No modifier (exact match)
     None,
+    /// Pattern contains substring
     Contains,
+    /// Pattern starts with substring
     Prefix,
+    /// Pattern ends with substring
     Suffix,
+    /// Match all patterns
     All,
+    /// Regular expression pattern
     Regex,
+    /// Keyword pattern
     Keyword,
 }
 

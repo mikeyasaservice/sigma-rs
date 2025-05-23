@@ -170,8 +170,8 @@ mod tests {
         let manager = OffsetManager::new(10, std::time::Duration::from_secs(60));
         
         // Mark some offsets
-        manager.mark_offset("test-topic".to_string(), 0, 100).await;
-        manager.mark_offset("test-topic".to_string(), 1, 200).await;
+        manager.mark_offset("test-topic", 0, 100).await;
+        manager.mark_offset("test-topic", 1, 200).await;
         
         assert_eq!(manager.pending_count().await, 2);
         

@@ -1,0 +1,166 @@
+[package]
+name = "sigma-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Sigma-rs Contributors <contact@sigma-rs.io>"]
+description = "High-performance Rust implementation of the Sigma rule engine for security event detection"
+documentation = "https://docs.rs/sigma-rs"
+homepage = "https://github.com/sigma-rs/sigma-rs"
+repository = "https://github.com/sigma-rs/sigma-rs"
+license = "Apache-2.0"
+readme = "README.md"
+keywords = ["sigma", "security", "detection", "rules", "event"]
+categories = ["security", "parser-implementations", "network-programming"]
+rust-version = "1.75.0"
+
+[package.metadata.docs.rs]
+all-features = true
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+# Core
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+regex = "1.10"
+glob = "0.3"
+thiserror = "2.0.12"
+anyhow = "1.0"
+
+# Tokio Stack
+tokio = { version = "1.35", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec", "io"] }
+axum = { version = "0.8.4", features = ["macros", "json", "tracing"], optional = true }
+tonic = { version = "0.11", features = ["transport", "tls"], optional = true }
+async-stream = { version = "0.3", optional = true }
+tokio-stream = { version = "0.1", optional = true }
+prost = "0.12"
+tower = { version = "0.4", features = ["timeout", "retry", "util"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "timeout"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+
+# String Matching
+aho-corasick = "1.1"
+
+# Async
+async-trait = "0.1"
+futures = "0.3"
+pin-project = "1.1"
+
+# Kafka Client
+rdkafka = { version = "0.36", features = ["tokio"], optional = true }
+
+# Metrics
+prometheus = { version = "0.13", optional = true }
+
+# Feature Flags
+once_cell = "1.19"
+lazy_static = "1.5"
+
+# Compression
+flate2 = "1.0"
+
+# Additional Dependencies
+globset = "0.4"
+rand = "0.8"
+uuid = { version = "1.10", features = ["v4"] }
+moka = { version = "0.12", features = ["future"] }
+ipnetwork = "0.20"
+jsonpath-rust = "1.0.2"
+
+# System
+sysinfo = "0.32"
+num_cpus = "1.16"
+parking_lot = "0.12"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+yansi = "1.0.1"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Serialization
+bytes = "1.5"
+byteorder = "1.5"
+base64 = "0.22"
+walkdir = "2.5.0"
+indicatif = "0.17.11"
+
+# Testing Utilities (dev-dependencies)
+[dev-dependencies]
+criterion = { version = "0.6", features = ["html_reports"] }
+pretty_assertions = "1.4"
+proptest = "1.4"
+tempfile = "3.10"
+quickcheck = "1.0"
+quickcheck_macros = "1.0"
+serial_test = "3.0"
+rstest = "0.24"
+
+[build-dependencies]
+tonic-build = "0.11"
+
+[features]
+default = []
+kafka = ["rdkafka"]
+metrics = ["prometheus"]
+service = ["axum", "tonic", "async-stream", "tokio-stream"]
+all = ["kafka", "metrics", "service"]
+
+[[bench]]
+name = "sigma_benchmarks"
+harness = false
+
+[[bench]]
+name = "rule_matching"
+harness = false
+
+[[bench]]
+name = "simplified_benchmarks"
+harness = false
+
+[[bench]]
+name = "comprehensive_benchmarks"
+harness = false
+
+[[bench]]
+name = "consumer_benchmarks"
+harness = false
+
+[[example]]
+name = "rule_validator"
+required-features = []
+
+[[example]]
+name = "event_detector"
+required-features = []
+
+[[example]]
+name = "simple_detection"
+required-features = []
+
+[[example]]
+name = "stream_detector"
+required-features = ["kafka"]
+
+[[example]]
+name = "parallel_stream_detector"
+required-features = ["kafka"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.bench]
+opt-level = 3
+debug = false
+rpath = false
+lto = false
+debug-assertions = false
+codegen-units = 1

@@ -110,7 +110,8 @@ pub fn new_string_matcher(
     match matchers.len() {
         1 => {
             let mut iter = matchers.into_iter();
-            Ok(iter.next().expect("Vec with length 1 must have element"))
+            iter.next()
+                .ok_or_else(|| "Internal error: Vec with length 1 has no element".to_string())
         }
         _ => {
             if all {
@@ -137,7 +138,8 @@ pub fn new_num_matcher(values: Vec<i64>) -> Result<Box<dyn NumMatcher>, String> 
     match matchers.len() {
         1 => {
             let mut iter = matchers.into_iter();
-            Ok(iter.next().expect("Vec with length 1 must have element"))
+            iter.next()
+                .ok_or_else(|| "Internal error: Vec with length 1 has no element".to_string())
         }
         _ => Ok(Box::new(NumMatchers::new(matchers))),
     }

@@ -17,8 +17,11 @@ pub use error::ParseError;
 /// Maximum number of tokens allowed in a single rule condition
 const MAX_TOKENS: usize = 10_000;
 
-/// Maximum recursion depth for nested expressions
-const MAX_RECURSION_DEPTH: usize = 100;
+/// Maximum recursion depth for nested expressions (reduced for safety)
+const MAX_RECURSION_DEPTH: usize = 50;
+
+/// Maximum memory allowed for token collection (10MB)
+const MAX_MEMORY_BYTES: usize = 10 * 1024 * 1024;
 
 /// Parser for Sigma rules that consumes tokens from lexer and builds AST
 #[derive(Debug)]
@@ -30,6 +33,8 @@ pub struct Parser {
     result: Option<Arc<dyn Branch>>,
     no_collapse_ws: bool,
     max_tokens: usize,
+    memory_used: usize,
+    max_memory: usize,
 }
 
 impl Parser {
@@ -44,6 +49,8 @@ impl Parser {
             result: None,
             no_collapse_ws,
             max_tokens: MAX_TOKENS,
+            memory_used: 0,
+            max_memory: MAX_MEMORY_BYTES,
         }
     }
     
@@ -58,7 +65,15 @@ impl Parser {
             result: None,
             no_collapse_ws,
             max_tokens,
+            memory_used: 0,
+            max_memory: MAX_MEMORY_BYTES,
         }
+    }
+    
+    /// Estimate memory usage for an Item
+    fn estimate_item_size(item: &Item) -> usize {
+        // Base struct size + string value size + overhead
+        std::mem::size_of::<Item>() + item.value.len() + 32
     }
 
     /// Run the parser, collecting tokens and building the AST
@@ -101,7 +116,7 @@ impl Parser {
                     return Err(ParseError::invalid_sequence(
                         prev.clone(),
                         item.clone(),
-                        self.tokens.clone(),
+                        &self.tokens,
                     ));
                 }
             }
@@ -115,22 +130,39 @@ impl Parser {
                         limit: self.max_tokens,
                     });
                 }
+                
+                // Check memory limit before adding
+                let item_size = Self::estimate_item_size(&item);
+                if self.memory_used + item_size > self.max_memory {
+                    return Err(ParseError::MemoryLimitExceeded {
+                        current_bytes: self.memory_used + item_size,
+                        limit_bytes: self.max_memory,
+                    });
+                }
+                
                 self.tokens.push(item.clone());
+                self.memory_used += item_size;
             }
 
             self.previous = Some(item);
         }
 
         // Wait for lexer to complete
-        lexer_handle.await.map_err(|e| ParseError::parser_error(e.to_string()))?
-            .map_err(|e| ParseError::parser_error(e.to_string()))?;
+        lexer_handle.await
+            .map_err(|e| ParseError::TaskJoinError(e.to_string()))?
+            .map_err(|e| ParseError::LexerError(Arc::new(e)))?;
 
         // Validate final token
         if let Some(last) = &self.previous {
             if last.token != Token::LitEof {
+                // Create a limited view of tokens for error context
+                let token_count = self.tokens.len();
+                let context_start = token_count.saturating_sub(10);
+                let context_tokens = self.tokens[context_start..].to_vec();
+                
                 return Err(ParseError::incomplete_sequence(
                     self.condition.to_string(),
-                    self.tokens.clone(),
+                    context_tokens,
                     last.clone(),
                 ));
             }
@@ -141,6 +173,9 @@ impl Parser {
 
     /// Parse collected tokens into AST
     fn parse(&mut self) -> Result<(), ParseError> {
+        // Pre-validate parentheses balance and depth
+        self.validate_parentheses()?;
+        
         let result = new_branch(
             &self.sigma,
             &self.tokens,
@@ -148,6 +183,40 @@ impl Parser {
             self.no_collapse_ws,
         )?;
         self.result = Some(result);
+        Ok(())
+    }
+    
+    /// Validate parentheses are balanced and not too deeply nested
+    fn validate_parentheses(&self) -> Result<(), ParseError> {
+        let mut depth = 0;
+        let mut max_depth = 0;
+        
+        for token in &self.tokens {
+            match token.token {
+                Token::SepLpar => {
+                    depth += 1;
+                    max_depth = max_depth.max(depth);
+                    if max_depth > MAX_RECURSION_DEPTH {
+                        return Err(ParseError::RecursionLimitExceeded {
+                            current: max_depth,
+                            limit: MAX_RECURSION_DEPTH,
+                        });
+                    }
+                }
+                Token::SepRpar => {
+                    if depth == 0 {
+                        return Err(ParseError::parser_error("Unmatched closing parenthesis"));
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+        }
+        
+        if depth != 0 {
+            return Err(ParseError::parser_error("Unbalanced parentheses"));
+        }
+        
         Ok(())
     }
 
@@ -819,5 +888,79 @@ mod tests {
         let result = parser.run().await;
         assert!(result.is_ok(), "Parser should handle field modifiers");
         assert!(parser.result().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_memory_limit() {
+        // Create a large condition that would exceed memory limits
+        let large_value = "x".repeat(1_000_000); // 1MB string
+        let condition = format!("selection1 or selection2 or selection3 or selection4 or selection5");
+        let mut detection = Detection::new();
+        detection.insert("condition".to_string(), serde_json::Value::String(condition));
+        
+        // Add selections with large values
+        for i in 1..=5 {
+            detection.insert(format!("selection{}", i), serde_json::json!(large_value.clone()));
+        }
+        
+        let mut parser = Parser::new_with_limits(detection, false, 100);
+        parser.max_memory = 1024 * 1024; // Set 1MB limit
+        
+        let result = parser.run().await;
+        match result {
+            Err(ParseError::MemoryLimitExceeded { .. }) => {
+                // Expected error
+            }
+            _ => panic!("Expected MemoryLimitExceeded error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_deep_recursion_protection() {
+        // Create deeply nested parentheses
+        let mut condition = String::new();
+        for _ in 0..60 {
+            condition.push('(');
+        }
+        condition.push_str("selection");
+        for _ in 0..60 {
+            condition.push(')');
+        }
+        
+        let mut detection = Detection::new();
+        detection.insert("condition".to_string(), serde_json::Value::String(condition));
+        detection.insert("selection".to_string(), serde_json::json!("value"));
+        
+        let mut parser = Parser::new(detection, false);
+        
+        let result = parser.run().await;
+        match result {
+            Err(ParseError::RecursionLimitExceeded { .. }) => {
+                // Expected error
+            }
+            _ => panic!("Expected RecursionLimitExceeded error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_error_context_preservation() {
+        // Create condition with invalid sequence
+        let condition = "selection1 selection2"; // Missing operator
+        let mut detection = Detection::new();
+        detection.insert("condition".to_string(), serde_json::Value::String(condition.to_string()));
+        detection.insert("selection1".to_string(), serde_json::json!("value1"));
+        detection.insert("selection2".to_string(), serde_json::json!("value2"));
+        
+        let mut parser = Parser::new(detection, false);
+        
+        let result = parser.run().await;
+        match result {
+            Err(ParseError::InvalidTokenSequence { token_count, context_tokens, .. }) => {
+                // Verify we have context without the full token list
+                assert!(token_count > 0);
+                assert!(context_tokens.len() <= 5); // Should have limited context
+            }
+            _ => panic!("Expected InvalidTokenSequence error"),
+        }
     }
 }

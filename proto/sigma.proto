@@ -1,0 +1,199 @@
+syntax = "proto3";
+
+package sigma;
+
+// Sigma rule evaluation service
+service SigmaService {
+    // Evaluate a single event against all rules
+    rpc EvaluateEvent(EvaluateEventRequest) returns (EvaluateEventResponse);
+    
+    // Get service health status
+    rpc GetHealth(HealthRequest) returns (HealthResponse);
+    
+    // Get service metrics
+    rpc GetMetrics(MetricsRequest) returns (MetricsResponse);
+    
+    // List loaded rules
+    rpc ListRules(ListRulesRequest) returns (ListRulesResponse);
+    
+    // Stream evaluation of multiple events
+    rpc StreamEvaluate(stream StreamEvaluateRequest) returns (stream StreamEvaluateResponse);
+}
+
+// Request to evaluate a single event
+message EvaluateEventRequest {
+    // Event data as JSON string
+    string event_json = 1;
+    
+    // Optional rule filter (evaluate only specific rules)
+    repeated string rule_ids = 2;
+}
+
+// Response for event evaluation
+message EvaluateEventResponse {
+    // Whether any rules matched
+    bool matched = 1;
+    
+    // List of rule matches
+    repeated RuleMatch matches = 2;
+    
+    // Total number of rules evaluated
+    uint32 rules_evaluated = 3;
+    
+    // Evaluation time in milliseconds
+    uint64 evaluation_time_ms = 4;
+    
+    // Error message if evaluation failed
+    string error = 5;
+}
+
+// Individual rule match result
+message RuleMatch {
+    // Rule identifier
+    string rule_id = 1;
+    
+    // Rule title
+    string rule_title = 2;
+    
+    // Whether this rule matched
+    bool matched = 3;
+    
+    // Rule evaluation time in milliseconds
+    uint64 evaluation_time_ms = 4;
+    
+    // Match confidence (0.0 to 1.0)
+    float confidence = 5;
+    
+    // Additional metadata
+    map<string, string> metadata = 6;
+}
+
+// Health check request
+message HealthRequest {}
+
+// Health check response
+message HealthResponse {
+    // Service status (healthy, degraded, unhealthy)
+    string status = 1;
+    
+    // Service version
+    string version = 2;
+    
+    // Uptime in seconds
+    uint64 uptime_seconds = 3;
+    
+    // Additional health details
+    map<string, string> details = 4;
+}
+
+// Metrics request
+message MetricsRequest {}
+
+// Metrics response
+message MetricsResponse {
+    // Number of rules loaded
+    uint32 rules_loaded = 1;
+    
+    // Total events processed since start
+    uint64 events_processed = 2;
+    
+    // Total matches found since start
+    uint64 matches_found = 3;
+    
+    // Average processing time in milliseconds
+    double avg_processing_time_ms = 4;
+    
+    // Current memory usage in bytes
+    uint64 memory_usage_bytes = 5;
+    
+    // Performance metrics
+    PerformanceMetrics performance = 6;
+}
+
+// Performance metrics
+message PerformanceMetrics {
+    // Events per second
+    double events_per_second = 1;
+    
+    // 50th percentile processing time in milliseconds
+    double p50_processing_time_ms = 2;
+    
+    // 95th percentile processing time in milliseconds
+    double p95_processing_time_ms = 3;
+    
+    // 99th percentile processing time in milliseconds
+    double p99_processing_time_ms = 4;
+    
+    // Error rate (0.0 to 1.0)
+    double error_rate = 5;
+}
+
+// List rules request
+message ListRulesRequest {
+    // Optional filter by status
+    optional string status_filter = 1;
+    
+    // Pagination
+    uint32 page_size = 2;
+    string page_token = 3;
+}
+
+// List rules response
+message ListRulesResponse {
+    // Rule summaries
+    repeated RuleSummary rules = 1;
+    
+    // Next page token
+    string next_page_token = 2;
+    
+    // Total number of rules
+    uint32 total_count = 3;
+}
+
+// Rule summary information
+message RuleSummary {
+    // Rule identifier
+    string rule_id = 1;
+    
+    // Rule title
+    string rule_title = 2;
+    
+    // Rule description
+    string description = 3;
+    
+    // Rule status (enabled, disabled)
+    string status = 4;
+    
+    // Rule level (low, medium, high, critical)
+    string level = 5;
+    
+    // Rule tags
+    repeated string tags = 6;
+    
+    // Last modified timestamp
+    int64 last_modified = 7;
+}
+
+// Stream evaluation request
+message StreamEvaluateRequest {
+    // Event data as JSON string
+    string event_json = 1;
+    
+    // Sequence number for ordering
+    uint64 sequence = 2;
+    
+    // Optional metadata
+    map<string, string> metadata = 3;
+}
+
+// Stream evaluation response
+message StreamEvaluateResponse {
+    // Request sequence number
+    uint64 sequence = 1;
+    
+    // Evaluation result
+    EvaluateEventResponse result = 2;
+    
+    // Processing timestamp
+    int64 timestamp = 3;
+}

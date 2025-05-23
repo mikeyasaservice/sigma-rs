@@ -5,8 +5,10 @@
 
 use crate::error::SigmaError;
 use regex::Regex;
+use once_cell::sync::Lazy;
 
-/// Maximum regex compilation time in milliseconds
+/// Maximum regex compilation time in milliseconds (reserved for future timeout implementation)
+#[allow(dead_code)]
 const MAX_REGEX_COMPILE_TIME_MS: u64 = 100;
 
 /// Maximum regex pattern length
@@ -18,21 +20,27 @@ const MAX_DFA_SIZE: usize = 2 * 1024 * 1024;
 /// Maximum NFA size limit (10 MB) 
 const MAX_NFA_SIZE: usize = 10 * 1024 * 1024;
 
-/// Known dangerous regex patterns that can cause ReDoS
-const REDOS_PATTERNS: &[&str] = &[
-    // Nested quantifiers
-    r"\(\.\*\+\)\+",
-    r"\(\.\+\*\)\*",
-    r"\(\.\*\)\+\$",
-    r"\(\.\+\)\*\$",
-    // Alternation with overlap
-    r"\([a-zA-Z]+\)\*\$",
-    r"\(.*\|.*\)\*",
-    // Exponential backtracking patterns
-    r"\(a\+\)\+",
-    r"\(a\*\)\+",
-    r"\(a\|a\)\*",
-];
+/// Pre-compiled ReDoS detection patterns for performance
+static REDOS_COMPILED_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
+    let patterns = [
+        // Nested quantifiers
+        r"\(\.\*\+\)\+",
+        r"\(\.\+\*\)\*",
+        r"\(\.\*\)\+\$",
+        r"\(\.\+\)\*\$",
+        // Alternation with overlap
+        r"\([a-zA-Z]+\)\*\$",
+        r"\(.*\|.*\)\*",
+        // Exponential backtracking patterns
+        r"\(a\+\)\+",
+        r"\(a\*\)\+",
+        r"\(a\|a\)\*",
+    ];
+    
+    patterns.iter()
+        .filter_map(|pattern| Regex::new(pattern).ok())
+        .collect()
+});
 
 /// Validate and compile a regex pattern safely
 /// 
@@ -59,15 +67,13 @@ pub fn safe_regex_compile(pattern: &str) -> Result<Regex, SigmaError> {
         });
     }
     
-    // Scan for known ReDoS patterns
-    for redos_pattern in REDOS_PATTERNS {
-        if let Ok(redos_regex) = Regex::new(redos_pattern) {
-            if redos_regex.is_match(pattern) {
-                return Err(SigmaError::UnsafeRegex {
-                    pattern: pattern.to_string(),
-                    reason: format!("Pattern matches known ReDoS vulnerability: {}", redos_pattern),
-                });
-            }
+    // Scan for known ReDoS patterns using pre-compiled regexes
+    for redos_regex in REDOS_COMPILED_PATTERNS.iter() {
+        if redos_regex.is_match(pattern) {
+            return Err(SigmaError::UnsafeRegex {
+                pattern: pattern.to_string(),
+                reason: format!("Pattern matches known ReDoS vulnerability: {}", redos_regex.as_str()),
+            });
         }
     }
     
@@ -125,21 +131,26 @@ fn has_excessive_nesting(pattern: &str) -> bool {
     max_depth > MAX_NESTING_DEPTH
 }
 
-/// Check for patterns that may cause catastrophic backtracking
-fn has_catastrophic_backtracking(pattern: &str) -> bool {
-    // Look for nested quantifiers like (a+)+ or (a*)* 
-    let nested_quantifier_patterns = [
+/// Pre-compiled patterns for catastrophic backtracking detection
+static CATASTROPHIC_BACKTRACKING_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
+    let patterns = [
         r"\([^)]*\+[^)]*\)\+",
         r"\([^)]*\*[^)]*\)\*",
         r"\([^)]*\+[^)]*\)\*",
         r"\([^)]*\*[^)]*\)\+",
     ];
     
-    for check_pattern in &nested_quantifier_patterns {
-        if let Ok(regex) = Regex::new(check_pattern) {
-            if regex.is_match(pattern) {
-                return true;
-            }
+    patterns.iter()
+        .filter_map(|pattern| Regex::new(pattern).ok())
+        .collect()
+});
+
+/// Check for patterns that may cause catastrophic backtracking
+fn has_catastrophic_backtracking(pattern: &str) -> bool {
+    // Look for nested quantifiers using pre-compiled patterns
+    for regex in CATASTROPHIC_BACKTRACKING_PATTERNS.iter() {
+        if regex.is_match(pattern) {
+            return true;
         }
     }
     
@@ -192,16 +203,14 @@ pub fn safe_regex_compile_with_config(
         });
     }
 
-    // ReDoS scanning if enabled
+    // ReDoS scanning if enabled using pre-compiled regexes
     if config.enable_redos_scanning {
-        for redos_pattern in REDOS_PATTERNS {
-            if let Ok(redos_regex) = Regex::new(redos_pattern) {
-                if redos_regex.is_match(pattern) {
-                    return Err(SigmaError::UnsafeRegex {
-                        pattern: pattern.to_string(),
-                        reason: format!("Pattern matches known ReDoS vulnerability: {}", redos_pattern),
-                    });
-                }
+        for redos_regex in REDOS_COMPILED_PATTERNS.iter() {
+            if redos_regex.is_match(pattern) {
+                return Err(SigmaError::UnsafeRegex {
+                    pattern: pattern.to_string(),
+                    reason: format!("Pattern matches known ReDoS vulnerability: {}", redos_regex.as_str()),
+                });
             }
         }
     }
