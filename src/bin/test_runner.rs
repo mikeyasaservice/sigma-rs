@@ -63,7 +63,7 @@ fn main() -> Result<()> {
         Commands::All => {
             tracing::error!(
                 "{}",
-                yansi::Paint::bold(yansi::Paint::new("Running all test suites..."))
+                yansi::Paint::bold(&yansi::Paint::new("Running all test suites..."))
             );
             run_unit_tests()?;
             run_integration_tests()?;
@@ -73,7 +73,7 @@ fn main() -> Result<()> {
             run_property_tests(1000)?;
             tracing::error!(
                 "{}",
-                yansi::Paint::bold(yansi::Paint::green("All tests completed!"))
+                yansi::Paint::bold(&yansi::Paint::green("All tests completed!"))
             );
             Ok(())
         }
@@ -83,7 +83,7 @@ fn main() -> Result<()> {
 fn run_unit_tests() -> Result<()> {
     tracing::error!(
         "{}",
-        yansi::Paint::bold(yansi::Paint::blue("Running unit tests...")).to_string()
+        yansi::Paint::bold(&yansi::Paint::blue("Running unit tests...")).to_string()
     );
 
     // In a real implementation, this would run the actual unit tests
@@ -98,7 +98,7 @@ fn run_unit_tests() -> Result<()> {
 fn run_integration_tests() -> Result<()> {
     tracing::error!(
         "{}",
-        yansi::Paint::bold(yansi::Paint::blue("Running integration tests..."))
+        yansi::Paint::bold(&yansi::Paint::blue("Running integration tests..."))
     );
 
     // Test the complete pipeline
@@ -135,7 +135,7 @@ fn run_integration_tests() -> Result<()> {
 fn run_compatibility_tests(test_file: &PathBuf) -> Result<()> {
     tracing::error!(
         "{}",
-        yansi::Paint::bold(yansi::Paint::blue("Running compatibility tests..."))
+        yansi::Paint::bold(&yansi::Paint::blue("Running compatibility tests..."))
     );
 
     let content = fs::read_to_string(test_file).context("Failed to read test file")?;
@@ -159,7 +159,7 @@ fn run_compatibility_tests(test_file: &PathBuf) -> Result<()> {
 fn run_property_tests(cases: u32) -> Result<()> {
     tracing::error!(
         "{}",
-        yansi::Paint::bold(yansi::Paint::blue(format!(
+        yansi::Paint::bold(&yansi::Paint::blue(&format!(
             "Running property-based tests ({} cases)...",
             cases
         )))
@@ -177,7 +177,7 @@ fn run_property_tests(cases: u32) -> Result<()> {
 fn run_real_world_tests(rules_dir: &PathBuf, events_file: &PathBuf) -> Result<()> {
     tracing::error!(
         "{}",
-        yansi::Paint::bold(yansi::Paint::blue("Running real-world tests..."))
+        yansi::Paint::bold(&yansi::Paint::blue("Running real-world tests..."))
     );
 
     // Load Sigma rules
