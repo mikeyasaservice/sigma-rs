@@ -110,7 +110,20 @@ pub enum SigmaError {
     /// Invalid matcher configuration
     #[error("Invalid matcher configuration: {0}")]
     InvalidMatcher(String),
-    
+
+    /// Arrow error
+    #[cfg(feature = "arrow")]
+    #[error("Arrow error: {0}")]
+    Arrow(String),
+
+    /// Pattern matching error
+    #[error("Pattern error: {0}")]
+    Pattern(String),
+
+    /// Field not found in event
+    #[error("Field error: {0}")]
+    Field(String),
+
     /// Generic error from anyhow
     #[error("Error: {0}")]
     Other(#[from] anyhow::Error),

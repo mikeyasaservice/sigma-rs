@@ -24,6 +24,10 @@ pub use string_matcher::*;
 pub use traits::*;
 pub use whitespace::*;
 
+// Arrow support (feature-gated)
+#[cfg(feature = "arrow")]
+pub mod arrow_string_matcher;
+
 /// Type of sigma detection identifier
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdentifierType {

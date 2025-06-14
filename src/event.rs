@@ -6,6 +6,7 @@ use std::sync::Arc;
 // Export EventBuilder for tests
 pub use builder::EventBuilder;
 
+
 /// Trait for events that can provide keyword fields for matching
 pub trait Keyworder {
     /// Returns list of fields that are relevant for keyword matching

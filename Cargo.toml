@@ -1,6 +1,6 @@
 [package]
 name = "sigma-rs"
-version = "1.0.0"
+version = "2.0.0-nightly"
 edition = "2021"
 authors = ["Sigma-rs Contributors <contact@sigma-rs.io>"]
 description = "High-performance Rust implementation of the Sigma rule engine for security event detection"
@@ -88,7 +88,7 @@ clap = { version = "4.5", features = ["derive"] }
 yansi = "1.0.1"
 
 # Time
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "=0.4.38", features = ["serde"] }
 
 # Serialization
 bytes = "1.5"
@@ -96,6 +96,17 @@ byteorder = "1.5"
 base64 = "0.22"
 walkdir = "2.5.0"
 indicatif = "0.17.11"
+
+# Arrow ecosystem  
+arrow = { version = "=53.2.0", features = ["prettyprint"] }
+arrow-array = "=53.2.0"
+arrow-schema = "=53.2.0"
+arrow-json = "=53.2.0"
+arrow-select = "=53.2.0"
+arrow-flight = { version = "=53.2.0", optional = true }
+datafusion = { version = "=43.0.0", optional = true }
+datafusion-expr = { version = "=43.0.0", optional = true }
+parquet = { version = "=53.2.0", optional = true }
 
 # Testing Utilities (dev-dependencies)
 [dev-dependencies]
@@ -117,7 +128,8 @@ kafka = ["rdkafka"]
 metrics = ["prometheus"]
 service = ["axum", "tonic", "async-stream", "tokio-stream"]
 telemetry = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-otlp", "opentelemetry-semantic-conventions", "tracing-opentelemetry"]
-all = ["kafka", "metrics", "service", "telemetry"]
+arrow = ["arrow-flight", "datafusion", "datafusion-expr", "parquet"]
+all = ["kafka", "metrics", "service", "telemetry", "arrow"]
 
 [[bench]]
 name = "simplified_benchmarks"

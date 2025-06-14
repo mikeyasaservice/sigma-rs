@@ -100,6 +100,12 @@ pub mod tree;
 /// Result types for matches
 pub mod result;
 
+// Arrow modules (feature-gated)
+#[cfg(feature = "arrow")]
+pub mod arrow_event;
+#[cfg(feature = "arrow")]
+pub mod json_to_arrow;
+
 /// RuleSet for managing multiple rules
 pub mod ruleset;
 

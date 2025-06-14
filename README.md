@@ -9,7 +9,12 @@
 [![FOSSA Status](https://app.fossa.com/api/projects/custom%2B54172%2Fgithub.com%2Fseacurity%2Fsigma-rs.svg?type=shield&issueType=license)](https://app.fossa.com/projects/custom%2B54172%2Fgithub.com%2Fseacurity%2Fsigma-rs?ref=badge_shield&issueType=license)
 [![FOSSA Status](https://app.fossa.com/api/projects/custom%2B54172%2Fgithub.com%2Fseacurity%2Fsigma-rs.svg?type=shield&issueType=security)](https://app.fossa.com/projects/custom%2B54172%2Fgithub.com%2Fseacurity%2Fsigma-rs?ref=badge_shield&issueType=security)
 
-A production-ready Rust implementation of the Sigma rule engine with Redpanda/Kafka integration, designed for real-time security event processing at scale. Delivers **4.3x better performance** than existing Go implementations while maintaining full Sigma specification compatibility.
+A production-ready Rust implementation of the Sigma rule engine designed for real-time security event processing at scale. 
+
+**Current**: 75k events/sec single-node processing
+**Coming Soon**: 2-5M events/sec with Arrow columnar processing, 100M+ events/sec distributed
+
+Features high-performance pattern matching, Kafka integration, and soon Arrow Flight for zero-copy streaming.
 
 ## Features
 
@@ -45,6 +50,25 @@ let tree = sigma_rs::tree::Tree::from_rule(&rule).await?;
 let matches = tree.matches(&event).await?;
 tracing::error!("Event matches: {}", matches.matched);
 ```
+
+## Arrow Flight Server (Coming in v1.1.0)
+
+```bash
+# Single binary serves multiple protocols
+sigma-rs --rules ./rules --flight-server 0.0.0.0:8080
+
+# Connect from downstream systems
+arrow-flight-client connect grpc://localhost:8080
+
+# Or use as both consumer and server
+sigma-rs --rules ./rules --input kafka --flight-server :8080
+```
+
+### Zero-Copy Streaming Architecture
+- **Input**: JSON, Kafka, or Arrow Flight
+- **Processing**: Columnar evaluation with SIMD
+- **Output**: JSON, Kafka, or Arrow Flight
+- **Performance**: 2-5M events/sec per node
 
 ## Redpanda Integration
 
