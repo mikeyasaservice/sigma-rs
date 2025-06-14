@@ -1,0 +1,25 @@
+title: Suspicious PowerShell Command
+id: f62176f3-8128-4faa-bf6c-83261322e5eb
+status: experimental
+description: Detects suspicious PowerShell commands that may indicate malicious activity
+tags:
+  - attack.execution
+  - attack.t1059.001
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  selection:
+    EventID: 1
+    CommandLine|contains: 
+      - 'powershell'
+      - '-enc'
+      - '-EncodedCommand'
+      - 'bypass'
+      - '-nop'
+      - 'hidden'
+  condition: selection
+level: high
+falsepositives:
+  - Legitimate administrative scripts
+  - Automated maintenance tasks

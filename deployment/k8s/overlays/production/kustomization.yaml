@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: sigma-rs-prod
+
+resources:
+  - ../../base
+
+replicas:
+  - name: sigma-rs
+    count: 10
+
+images:
+  - name: sigma-rs
+    newTag: v1.0.0
+
+patchesStrategicMerge:
+  - deployment-patch.yaml
+  - hpa-patch.yaml
+
+configMapGenerator:
+  - name: sigma-rs-config
+    behavior: merge
+    literals:
+      - kafka.brokers=kafka-prod-0.kafka:9092,kafka-prod-1.kafka:9092,kafka-prod-2.kafka:9092
+      - kafka.group.id=sigma-rs-prod
+      - sigma.worker.threads=16
+      - sigma.string.interning.enabled=true
+      - sigma.string.interning.max.size=50000

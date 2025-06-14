@@ -258,20 +258,28 @@ fn benchmark_rule_evaluation(c: &mut Criterion) {
     
     let group = c.benchmark_group("rule_evaluation");
     
-    // TODO: Once Tree implementation is complete
-    // for (i, rule_str) in rules.iter().enumerate() {
-    //     let rule = sigma_rs::rule::rule_from_yaml(rule_str.as_bytes()).unwrap();
-    //     let tree = sigma_rs::Tree::new(rule).unwrap();
-    //     
-    //     group.bench_with_input(BenchmarkId::new("evaluate", i), &events, |b, events| {
-    //         b.iter(|| {
-    //             for event in events {
-    //                 let dynamic_event = DynamicEvent::new(event.clone());
-    //                 black_box(tree.matches(&dynamic_event));
-    //             }
-    //         });
-    //     });
-    // }
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let rules = load_benchmark_rules();
+    let events = generate_test_events(1000);
+    
+    for (i, rule_str) in rules.iter().enumerate() {
+        let rule = sigma_rs::rule::rule_from_yaml(rule_str.as_bytes()).unwrap();
+        let rule_handle = sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("bench.yml"));
+        let tree = runtime.block_on(async {
+            sigma_rs::tree::build_tree(rule_handle).await.unwrap()
+        });
+        
+        group.bench_with_input(BenchmarkId::new("evaluate", i), &events, |b, events| {
+            b.iter(|| {
+                for event in events {
+                    let dynamic_event = DynamicEvent::new(event.clone());
+                    runtime.block_on(async {
+                        black_box(tree.match_event(&dynamic_event).await);
+                    });
+                }
+            });
+        });
+    }
     
     group.finish();
 }
@@ -280,19 +288,27 @@ fn benchmark_ruleset_evaluation(c: &mut Criterion) {
     let _rules = load_benchmark_rules();
     let _events = generate_test_events(100);
     
-    // TODO: Once Ruleset implementation is complete
-    // let ruleset = Ruleset::new();
-    // for rule_str in &rules {
-    //     let rule = sigma_rs::rule::rule_from_yaml(rule_str.as_bytes()).unwrap();
-    //     ruleset.add_rule(rule);
-    // }
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let mut ruleset = sigma_rs::ruleset::RuleSet::new();
+    let rules = load_benchmark_rules();
+    let events = generate_test_events(100);
+    
+    // Load rules into ruleset
+    runtime.block_on(async {
+        for rule_str in &rules {
+            let rule = sigma_rs::rule::rule_from_yaml(rule_str.as_bytes()).unwrap();
+            ruleset.add_rule(rule).await.unwrap();
+        }
+    });
     
     c.bench_function("ruleset_evaluation", |b| {
         b.iter(|| {
-            // for event in &events {
-            //     let dynamic_event = DynamicEvent::new(event.clone());
-            //     black_box(ruleset.evaluate(&dynamic_event));
-            // }
+            runtime.block_on(async {
+                for event in &events {
+                    let dynamic_event = DynamicEvent::new(event.clone());
+                    black_box(ruleset.evaluate(&dynamic_event).await.unwrap());
+                }
+            });
         });
     });
 }

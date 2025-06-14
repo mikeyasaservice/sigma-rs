@@ -128,7 +128,7 @@ impl Lexer {
 
     /// Emit a token with the collected value
     async fn emit(&mut self, token: Token) -> Result<(), LexError> {
-        // TODO: Future optimization - consider string interning to avoid allocations
+        // String interning is available via the pattern module if needed for optimization
         let value = self.collected().to_string();
         let item = Item::new(token, value);
         self.items_tx.send(item).await

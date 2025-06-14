@@ -1,0 +1,172 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sigma-rs.fullname" . }}
+  labels:
+    {{- include "sigma-rs.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "sigma-rs.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "sigma-rs.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "sigma-rs.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.appVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: RUST_LOG
+          value: "info,sigma_rs=debug"
+        - name: SIGMA_RULES_DIR
+          value: {{ .Values.sigma.rulesDir }}
+        - name: SIGMA_WORKER_THREADS
+          value: {{ .Values.sigma.workerThreads | quote }}
+        - name: SIGMA_COLLAPSE_WHITESPACE
+          value: {{ .Values.sigma.collapseWhitespace | quote }}
+        - name: SIGMA_FAIL_ON_PARSE_ERROR
+          value: {{ .Values.sigma.failOnParseError | quote }}
+        {{- if .Values.kafka.enabled }}
+        - name: KAFKA_BROKERS
+          value: {{ .Values.kafka.brokers }}
+        - name: KAFKA_GROUP_ID
+          value: {{ .Values.kafka.groupId }}
+        - name: KAFKA_TOPICS
+          value: {{ .Values.kafka.topics | join "," }}
+        - name: KAFKA_BATCH_SIZE
+          value: {{ .Values.kafka.batchSize | quote }}
+        - name: KAFKA_BUFFER_SIZE
+          value: {{ .Values.kafka.bufferSize | quote }}
+        - name: KAFKA_DLQ_TOPIC
+          value: {{ .Values.kafka.dlqTopic }}
+        {{- if .Values.kafka.tls.enabled }}
+        - name: KAFKA_TLS_ENABLED
+          value: "true"
+        - name: KAFKA_TLS_CERT
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.kafka.tls.certSecret }}
+              key: tls.crt
+        - name: KAFKA_TLS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.kafka.tls.keySecret }}
+              key: tls.key
+        - name: KAFKA_TLS_CA
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.kafka.tls.caSecret }}
+              key: ca.crt
+        {{- end }}
+        {{- if .Values.kafka.sasl.enabled }}
+        - name: KAFKA_SASL_ENABLED
+          value: "true"
+        - name: KAFKA_SASL_MECHANISM
+          value: {{ .Values.kafka.sasl.mechanism }}
+        - name: KAFKA_SASL_USERNAME
+          value: {{ .Values.kafka.sasl.username }}
+        - name: KAFKA_SASL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.kafka.sasl.passwordSecret }}
+              key: password
+        {{- end }}
+        {{- end }}
+        {{- if .Values.opentelemetry.enabled }}
+        - name: OTEL_ENABLED
+          value: "true"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: {{ .Values.opentelemetry.endpoint }}
+        - name: OTEL_SERVICE_NAME
+          value: {{ .Values.opentelemetry.serviceName }}
+        - name: OTEL_TRACES_SAMPLER
+          value: "parentbased_traceidratio"
+        - name: OTEL_TRACES_SAMPLER_ARG
+          value: {{ .Values.opentelemetry.samplingRate | quote }}
+        {{- end }}
+        {{- with .Values.env }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: {{ .Values.healthCheck.liveness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.healthCheck.liveness.periodSeconds }}
+          timeoutSeconds: {{ .Values.healthCheck.liveness.timeoutSeconds }}
+          failureThreshold: {{ .Values.healthCheck.liveness.failureThreshold }}
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: {{ .Values.healthCheck.readiness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.healthCheck.readiness.periodSeconds }}
+          timeoutSeconds: {{ .Values.healthCheck.readiness.timeoutSeconds }}
+          failureThreshold: {{ .Values.healthCheck.readiness.failureThreshold }}
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+        volumeMounts:
+        - name: rules
+          mountPath: {{ .Values.sigma.rulesDir }}
+          readOnly: true
+        {{- with .Values.volumeMounts }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      volumes:
+      - name: rules
+        {{- if .Values.sigma.rules.inline.enabled }}
+        configMap:
+          name: {{ include "sigma-rs.fullname" . }}-inline-rules
+        {{- else if .Values.sigma.rules.configMap.enabled }}
+        configMap:
+          name: {{ .Values.sigma.rules.configMap.name }}
+        {{- else if .Values.sigma.rules.secret.enabled }}
+        secret:
+          secretName: {{ .Values.sigma.rules.secret.name }}
+        {{- else if .Values.sigma.rules.persistentVolume.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ .Values.sigma.rules.persistentVolume.claimName }}
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      {{- with .Values.volumes }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

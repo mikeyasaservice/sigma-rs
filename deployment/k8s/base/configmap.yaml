@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sigma-rs-config
+  labels:
+    app: sigma-rs
+data:
+  kafka.brokers: "kafka-broker-0.kafka:9092,kafka-broker-1.kafka:9092,kafka-broker-2.kafka:9092"
+  kafka.group.id: "sigma-rs-processor"
+  kafka.topics: "security-events,windows-events,linux-events"
+  kafka.batch.size: "1000"
+  kafka.buffer.size: "10000"
+  kafka.dlq.topic: "sigma-rs-dlq"
+  sigma.worker.threads: "4"
+  sigma.collapse.whitespace: "true"
+  sigma.fail.on.parse.error: "false"
+  sigma.string.interning.enabled: "true"
+  sigma.string.interning.max.size: "10000"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sigma-rules
+  labels:
+    app: sigma-rs
+data:
+  suspicious-powershell.yml: |
+    title: Suspicious PowerShell Command
+    id: f62176f3-8128-4faa-bf6c-83261322e5eb
+    status: experimental
+    description: Detects suspicious PowerShell commands
+    tags:
+      - attack.execution
+      - attack.t1059.001
+    logsource:
+      product: windows
+      service: sysmon
+    detection:
+      selection:
+        EventID: 1
+        CommandLine|contains: 
+          - 'powershell'
+          - '-enc'
+          - '-EncodedCommand'
+      condition: selection
+    level: high
+  # Add more rules here or mount from external source

@@ -1,0 +1,26 @@
+apiVersion: v2
+name: sigma-rs
+description: High-performance Rust implementation of Sigma rule engine for security event detection
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - sigma
+  - siem
+  - security
+  - detection
+  - kafka
+home: https://github.com/sigma-rs/sigma-rs
+sources:
+  - https://github.com/sigma-rs/sigma-rs
+maintainers:
+  - name: Sigma-rs Team
+    email: contact@sigma-rs.io
+icon: https://github.com/sigma-rs/sigma-rs/raw/main/logo.png
+annotations:
+  artifacthub.io/category: security
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/recommendations: |
+    - url: https://artifacthub.io/packages/helm/prometheus-community/kube-prometheus-stack
+    - url: https://artifacthub.io/packages/helm/bitnami/kafka

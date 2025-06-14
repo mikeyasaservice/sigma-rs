@@ -1,0 +1,13 @@
+{{- if .Values.sigma.rules.inline.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sigma-rs.fullname" . }}-inline-rules
+  labels:
+    {{- include "sigma-rs.labels" . | nindent 4 }}
+data:
+{{- range $name, $content := .Values.sigma.rules.inline.rules }}
+  {{ $name }}: |
+{{ $content | indent 4 }}
+{{- end }}
+{{- end }}

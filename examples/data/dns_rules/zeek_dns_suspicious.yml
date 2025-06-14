@@ -1,0 +1,38 @@
+title: Suspicious DNS Queries in Zeek Logs
+id: e3b0b962-3c3a-4f5c-9b2e-5d9f6b8e3a5d
+status: experimental
+description: Detects suspicious DNS queries that may indicate malware communication or data exfiltration
+references:
+  - https://attack.mitre.org/techniques/T1071/004/
+author: Sigma Example
+date: 2025/01/22
+logsource:
+  product: zeek
+  service: dns
+detection:
+  suspicious_domains:
+    zeek.dns.query|contains:
+      - 'malicious-domain'
+      - 'crypto-miner'
+      - 'tor2web'
+      - '.tk'
+  suspicious_tlds:
+    zeek.dns.query|endswith:
+      - '.tk'
+      - '.ml'
+      - '.ga'
+      - '.onion'
+  tor_queries:
+    zeek.dns.query|contains:
+      - 'tor2web'
+      - 'onion'
+  high_entropy:
+    zeek.dns.query|re: '^[a-z0-9]{32,}\.'
+  condition: suspicious_domains or suspicious_tlds or tor_queries
+falsepositives:
+  - Legitimate services using .tk domains
+  - Security research activities
+level: high
+tags:
+  - attack.command_and_control
+  - attack.t1071.004

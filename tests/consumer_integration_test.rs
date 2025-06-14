@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod tests {
-    use sigma_rs::consumer::{
+    use sigma_rs::{
         config::{ConsumerConfig, ConsumerConfigBuilder},
         consumer::RedpandaConsumer,
         processor::MessageProcessor,
         error::{ConsumerError, ConsumerResult},
         retry::RetryPolicy,
         metrics::ConsumerMetrics,
-        offset_manager::OffsetManager,
+        offset::OffsetManager,
         dlq::DlqProducer,
     };
     use async_trait::async_trait;

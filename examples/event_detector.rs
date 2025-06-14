@@ -15,7 +15,6 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use sigma_rs::{DynamicEvent};
 use sigma_rs::error::Result;
-use sigma_rs::rule::Rule;
 use tracing::{info, warn, error, debug};
 use serde_json::{Value, Deserializer};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -86,7 +85,7 @@ async fn main() -> Result<()> {
     info!("Loaded {} rules", ruleset.len());
     
     // Process events
-    let results = Vec::new(); // process_events(&args, &rules)?;
+    let results = process_events(&args, &ruleset).await?;
     let duration = start.elapsed();
     
     // Write results
@@ -129,10 +128,16 @@ async fn process_events(args: &Args, ruleset: &sigma_rs::RuleSet) -> Result<Vec<
                     pb.inc(1);
                 }
                 
-                let result = process_single_event(event_value, ruleset).await;
-                if !result.matches.is_empty() {
-                    events_matched += 1;
-                    results.push(result);
+                match process_single_event(event_value, ruleset).await {
+                    Ok(result) => {
+                        if !result.matches.is_empty() {
+                            events_matched += 1;
+                            results.push(result);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to process event: {}", e);
+                    }
                 }
                 events_processed += 1;
             }
@@ -150,10 +155,16 @@ async fn process_events(args: &Args, ruleset: &sigma_rs::RuleSet) -> Result<Vec<
                 
                 match event_result {
                     Ok(event_value) => {
-                        let result = process_single_event(event_value, ruleset).await;
-                        if !result.matches.is_empty() {
-                            events_matched += 1;
-                            results.push(result);
+                        match process_single_event(event_value, ruleset).await {
+                            Ok(result) => {
+                                if !result.matches.is_empty() {
+                                    events_matched += 1;
+                                    results.push(result);
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Failed to process event: {}", e);
+                            }
                         }
                         events_processed += 1;
                     }
@@ -177,13 +188,19 @@ async fn process_single_event(event_value: Value, ruleset: &sigma_rs::RuleSet) -
     let start = Instant::now();
     let event = DynamicEvent::new(event_value.clone());
     
-    let mut matches = Vec::new();
-    
     // Apply rules using RuleSet
     let result = ruleset.evaluate(&event).await?;
+    
+    let mut matches = Vec::new();
     for match_result in &result.matches {
         if match_result.matched {
             debug!("Rule '{}' matched event", match_result.rule_title);
+            matches.push(common::MatchedRule {
+                rule_id: match_result.rule_id.clone(),
+                rule_title: match_result.rule_title.clone(),
+                rule_level: match_result.rule_level.clone(),
+                rule_tags: match_result.rule_tags.clone(),
+            });
         }
     }
     
