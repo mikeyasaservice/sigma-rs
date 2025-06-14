@@ -54,7 +54,7 @@ pin-project = "1.1"
 rdkafka = { version = "0.36", features = ["tokio"], optional = true }
 
 # Metrics
-prometheus = { version = "0.13", optional = true }
+prometheus = { version = "0.14", optional = true }
 
 # OpenTelemetry
 opentelemetry = { version = "0.21", optional = true }

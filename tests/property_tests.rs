@@ -268,7 +268,7 @@ proptest! {
         tags in prop::collection::vec("[a-zA-Z.0-9]+", 0..5)
     ) {
         // Property: Rule components should be independently optional
-        let mut rule = format!("title: {}\nid: test-123\n", title);
+        let mut rule = format!("title: {}\nid: 12345678-1234-1234-1234-123456789008\n", title);
         
         if let Some(desc) = description {
             rule.push_str(&format!("description: {}\n", desc));

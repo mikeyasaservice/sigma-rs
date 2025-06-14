@@ -57,7 +57,7 @@ fields:
 fn test_rule_handle() {
     let yaml = r#"
 title: Simple Rule
-id: test-123
+id: 12345678-1234-1234-1234-123456789009
 detection:
   selection:
     EventID: 1

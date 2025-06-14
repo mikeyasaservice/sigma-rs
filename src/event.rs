@@ -81,7 +81,7 @@ impl<'de> Deserialize<'de> for Value {
                 } else if let Some(f) = n.as_f64() {
                     Value::Float(f)
                 } else {
-                    eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                    tracing::warn!("Unable to convert JSON number: {:?}", n);
                     Value::Float(0.0)
                 }
             }
@@ -95,7 +95,7 @@ impl<'de> Deserialize<'de> for Value {
                         } else if let Some(f) = n.as_f64() {
                             Value::Float(f)
                         } else {
-                            eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                            tracing::warn!("Unable to convert JSON number: {:?}", n);
                             Value::Float(0.0)
                         }
                     },
@@ -113,7 +113,7 @@ impl<'de> Deserialize<'de> for Value {
                             } else if let Some(f) = n.as_f64() {
                                 Value::Float(f)
                             } else {
-                                eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                                tracing::warn!("Unable to convert JSON number: {:?}", n);
                                 Value::Float(0.0)
                             }
                         },
@@ -184,7 +184,7 @@ impl Selector for SimpleEvent {
                         } else if let Some(f) = n.as_f64() {
                             Value::Float(f)
                         } else {
-                            eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                            tracing::warn!("Unable to convert JSON number: {:?}", n);
                             Value::Float(0.0)
                         }
                     }
@@ -200,7 +200,7 @@ impl Selector for SimpleEvent {
                                     } else if let Some(f) = n.as_f64() {
                                         Value::Float(f)
                                     } else {
-                                        eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                                        tracing::warn!("Unable to convert JSON number: {:?}", n);
                                         Value::Float(0.0)
                                     }
                                 },
@@ -219,7 +219,7 @@ impl Selector for SimpleEvent {
                                     } else if let Some(f) = n.as_f64() {
                                         Value::Float(f)
                                     } else {
-                                        eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                                        tracing::warn!("Unable to convert JSON number: {:?}", n);
                                         Value::Float(0.0)
                                     }
                                 },
@@ -348,7 +348,7 @@ impl Selector for DynamicEvent {
                 } else if let Some(f) = n.as_f64() {
                     Value::Float(f)
                 } else {
-                    eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                    tracing::warn!("Unable to convert JSON number: {:?}", n);
                     Value::Float(0.0)
                 }
             },
@@ -402,7 +402,7 @@ impl DynamicEvent {
                 } else if let Some(f) = n.as_f64() {
                     Ok(Value::Float(f))
                 } else {
-                    eprintln!("Warning: Unable to convert JSON number: {:?}", n);
+                    tracing::warn!("Unable to convert JSON number: {:?}", n);
                     Ok(Value::Float(0.0))
                 }
             },

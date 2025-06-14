@@ -63,7 +63,7 @@ mod tests {
     async fn test_tree_eval() {
         // Create a simple rule
         let rule = Rule {
-            id: "test-123".to_string(),
+            id: "12345678-1234-1234-1234-123456789007".to_string(),
             title: "Test Rule".to_string(),
             description: Some("Test Description".to_string()),
             author: None,
@@ -107,7 +107,7 @@ mod tests {
         assert!(result.is_some());
         
         if let Some(result) = result {
-            assert_eq!(result.id, "test-123");
+            assert_eq!(result.id, "12345678-1234-1234-1234-123456789007");
             assert_eq!(result.title, "Test Rule");
             assert_eq!(result.description, "Test Description");
             assert_eq!(result.tags, vec!["attack.discovery"]);

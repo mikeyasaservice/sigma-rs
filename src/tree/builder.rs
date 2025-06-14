@@ -580,7 +580,7 @@ mod tests {
     async fn test_build_tree_from_rule() -> Result<(), Box<dyn std::error::Error>> {
         let yaml = r#"
 title: Test Rule
-id: test-123
+id: 12345678-1234-1234-1234-123456789005
 detection:
   selection:
     EventID: 1
@@ -600,7 +600,7 @@ detection:
     async fn test_build_tree_with_complex_condition() -> Result<(), Box<dyn std::error::Error>> {
         let yaml = r#"
 title: Complex Rule
-id: test-456
+id: 12345678-1234-1234-1234-123456789006
 detection:
   selection1:
     EventID: 1
@@ -612,7 +612,7 @@ detection:
         let rule = crate::rule::rule_from_yaml(yaml.as_bytes())?;
         let rule_handle = RuleHandle::new(rule, PathBuf::from("test.yml"));
         
-        let tree = build_tree(rule_handle).await?;
+        let _tree = build_tree(rule_handle).await?;
         
         // Tree builds successfully - comprehensive integration tests are in tests/
         Ok(())
