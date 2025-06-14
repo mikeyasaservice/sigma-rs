@@ -41,7 +41,7 @@ mod tests {
     #[test]
     fn test_num_pattern() {
         let pattern = NumPattern { value: 42 };
-        
+
         assert!(pattern.num_match(42));
         assert!(!pattern.num_match(41));
         assert!(!pattern.num_match(43));
@@ -56,7 +56,7 @@ mod tests {
         ];
 
         let collection = NumMatchers::new(matchers);
-        
+
         assert!(collection.num_match(1));
         assert!(collection.num_match(2));
         assert!(collection.num_match(3));

@@ -1,23 +1,22 @@
 //! Main Redpanda/Kafka consumer implementation
 
 use crate::consumer::{
-    config::ConsumerConfig,
-    error::{ConsumerError, ConsumerResult},
-    processor::MessageProcessor,
-    metrics::ConsumerMetrics,
-    offset_manager::{OffsetManager, CommitStrategy},
     backpressure::BackpressureController,
-    retry::{RetryExecutor, RetryResult},
+    config::ConsumerConfig,
     dlq::DlqProducer,
+    error::{ConsumerError, ConsumerResult},
+    metrics::ConsumerMetrics,
+    offset_manager::{CommitStrategy, OffsetManager},
+    processor::MessageProcessor,
+    retry::{RetryExecutor, RetryResult},
     shutdown::ShutdownState,
 };
 
-use rdkafka::{
-    ClientConfig,
-    consumer::{Consumer, StreamConsumer},
-    Message,
-};
 use futures::StreamExt;
+use rdkafka::{
+    consumer::{Consumer, StreamConsumer},
+    ClientConfig, Message,
+};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
@@ -44,7 +43,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
     pub async fn new(config: ConsumerConfig, processor: P) -> ConsumerResult<Self> {
         // Validate configuration
         config.validate().map_err(ConsumerError::ConfigError)?;
-        
+
         // Define allowed Kafka properties for security
         const ALLOWED_KAFKA_PROPS: &[&str] = &[
             // Compression settings
@@ -77,89 +76,95 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             "statistics.interval.ms",
             "enable.metrics.push",
         ];
-        
+
         // Create Kafka consumer
         let mut client_config = ClientConfig::new();
         client_config
             .set("bootstrap.servers", &config.brokers)
             .set("group.id", &config.group_id)
             .set("enable.auto.commit", config.enable_auto_commit.to_string())
-            .set("auto.commit.interval.ms", config.auto_commit_interval_ms.to_string())
+            .set(
+                "auto.commit.interval.ms",
+                config.auto_commit_interval_ms.to_string(),
+            )
             .set("session.timeout.ms", config.session_timeout_ms.to_string())
-            .set("max.poll.interval.ms", config.max_poll_interval_ms.to_string())
+            .set(
+                "max.poll.interval.ms",
+                config.max_poll_interval_ms.to_string(),
+            )
             .set("auto.offset.reset", &config.auto_offset_reset);
-        
+
         // Add custom properties with validation
         for (key, value) in &config.kafka_properties {
             if !ALLOWED_KAFKA_PROPS.contains(&key.as_str()) {
-                return Err(ConsumerError::ConfigError(
-                    format!("Disallowed Kafka property '{}'. Allowed properties: {:?}", 
-                            key, ALLOWED_KAFKA_PROPS)
-                ));
+                return Err(ConsumerError::ConfigError(format!(
+                    "Disallowed Kafka property '{}'. Allowed properties: {:?}",
+                    key, ALLOWED_KAFKA_PROPS
+                )));
             }
             client_config.set(key, value);
         }
-        
-        let consumer: StreamConsumer = client_config
-            .create()
-            .map_err(|e| ConsumerError::ConnectionError(format!("Failed to create consumer: {}", e)))?;
-        
+
+        let consumer: StreamConsumer = client_config.create().map_err(|e| {
+            ConsumerError::ConnectionError(format!("Failed to create consumer: {}", e))
+        })?;
+
         // Subscribe to topics with timeout
         let topics: Vec<&str> = config.topics.iter().map(|s| s.as_str()).collect();
         tokio::time::timeout(
             Duration::from_secs(30), // subscription timeout
             async {
-                consumer.subscribe(&topics)
-                    .map_err(|e| ConsumerError::ConnectionError(format!("Failed to subscribe: {}", e)))
-            }
-        ).await
+                consumer.subscribe(&topics).map_err(|e| {
+                    ConsumerError::ConnectionError(format!("Failed to subscribe: {}", e))
+                })
+            },
+        )
+        .await
         .map_err(|_| ConsumerError::ConnectionError("Subscription timeout".to_string()))??;
-        
+
         info!("Subscribed to topics: {:?}", config.topics);
-        
+
         // Create DLQ producer if configured
         let dlq_producer = if let Some(dlq_topic) = &config.dlq_topic {
             let mut dlq_config = ClientConfig::new();
             dlq_config
                 .set("bootstrap.servers", &config.brokers)
                 .set("message.timeout.ms", "30000");
-            
-            let producer: rdkafka::producer::FutureProducer = dlq_config
-                .create()
-                .map_err(|e| ConsumerError::ConnectionError(format!("Failed to create DLQ producer: {}", e)))?;
-            
+
+            let producer: rdkafka::producer::FutureProducer = dlq_config.create().map_err(|e| {
+                ConsumerError::ConnectionError(format!("Failed to create DLQ producer: {}", e))
+            })?;
+
             let dlq = DlqProducer::new(producer, dlq_topic.clone())
                 .with_timeout(Duration::from_secs(30))
                 .with_metadata(true);
-            
+
             info!("Created DLQ producer for topic: {}", dlq_topic);
             Some(Arc::new(dlq))
         } else {
             None
         };
-        
+
         // Create components
         let offset_manager = Arc::new(OffsetManager::new(
             config.batch_size,
             config.metrics_interval,
         ));
-        
+
         let metrics = Arc::new(ConsumerMetrics::new());
-        
+
         let backpressure = Arc::new(BackpressureController::new(
             config.max_inflight_messages,
             config.pause_threshold,
             config.resume_threshold,
         ));
-        
-        let commit_strategy = CommitStrategy::BatchOrInterval(
-            config.batch_size,
-            Duration::from_secs(5),
-        );
-        
+
+        let commit_strategy =
+            CommitStrategy::BatchOrInterval(config.batch_size, Duration::from_secs(5));
+
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let shutdown_state = Arc::new(ShutdownState::new());
-        
+
         Ok(Self {
             config,
             processor: Arc::new(processor),
@@ -174,33 +179,37 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             shutdown_state,
         })
     }
-    
+
     /// Run the consumer
     pub async fn run(self) -> ConsumerResult<()> {
-        info!("Starting Redpanda consumer with {} workers", self.config.num_workers);
-        
+        info!(
+            "Starting Redpanda consumer with {} workers",
+            self.config.num_workers
+        );
+
         // Create processing channel
-        let (task_tx, main_task_rx) = mpsc::channel::<ProcessingTask>(self.config.channel_buffer_size);
-        
+        let (task_tx, main_task_rx) =
+            mpsc::channel::<ProcessingTask>(self.config.channel_buffer_size);
+
         // Start background tasks
         let mut handles = vec![];
-        
+
         // Start consumer loop
         let consumer_handle = self.spawn_consumer_loop(task_tx.clone());
         handles.push(consumer_handle);
-        
+
         // Start worker distributor and processor workers
         let worker_handles = self.spawn_worker_pool(main_task_rx).await;
         handles.extend(worker_handles);
-        
+
         // Start metrics reporter
         let metrics_handle = self.spawn_metrics_reporter();
         handles.push(metrics_handle);
-        
+
         // Start offset committer
         let commit_handle = self.spawn_offset_committer();
         handles.push(commit_handle);
-        
+
         // Wait for shutdown signal
         let mut shutdown_rx = self.shutdown_rx.clone();
         tokio::select! {
@@ -212,51 +221,63 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                 self.shutdown_tx.send(true).ok();
             }
         }
-        
+
         // Graceful shutdown
         info!("Starting graceful shutdown");
-        
+
         // Close channel to stop accepting new messages
         // The consumer loop will stop when shutdown signal is sent
-        
+
         // Adaptive wait for inflight messages with timeout
         let shutdown_deadline = Instant::now() + Duration::from_secs(30);
         let mut last_inflight_count = None;
-        
-        while self.shutdown_state.has_inflight_messages().await && Instant::now() < shutdown_deadline {
+
+        while self.shutdown_state.has_inflight_messages().await
+            && Instant::now() < shutdown_deadline
+        {
             let current_inflight = self.shutdown_state.inflight_count().await;
-            
+
             // Log progress periodically
             if last_inflight_count != Some(current_inflight) {
-                info!("Waiting for {} inflight messages to complete", current_inflight);
+                info!(
+                    "Waiting for {} inflight messages to complete",
+                    current_inflight
+                );
                 last_inflight_count = Some(current_inflight);
             }
-            
+
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        
+
         if self.shutdown_state.has_inflight_messages().await {
-            warn!("Shutdown timeout reached with {} messages still in flight", 
-                  self.shutdown_state.inflight_count().await);
+            warn!(
+                "Shutdown timeout reached with {} messages still in flight",
+                self.shutdown_state.inflight_count().await
+            );
         }
-        
+
         // Commit final offsets with timeout
         match tokio::time::timeout(
             Duration::from_secs(10),
-            self.offset_manager.commit_offsets(&*self.consumer)
-        ).await {
+            self.offset_manager.commit_offsets(&*self.consumer),
+        )
+        .await
+        {
             Ok(Ok(())) => info!("Final offsets committed successfully"),
             Ok(Err(e)) => error!("Failed to commit final offsets: {}", e),
             Err(_) => error!("Timeout committing final offsets"),
         }
-        
+
         // Graceful shutdown of background tasks with timeout
         let handles_count = handles.len();
-        info!("Initiating graceful shutdown of {} background tasks", handles_count);
-        
+        info!(
+            "Initiating graceful shutdown of {} background tasks",
+            handles_count
+        );
+
         let shutdown_timeout = Duration::from_secs(30);
         let mut successful_shutdowns = 0;
-        
+
         for (i, handle) in handles.into_iter().enumerate() {
             match tokio::time::timeout(shutdown_timeout, handle).await {
                 Ok(Ok(())) => {
@@ -268,29 +289,34 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                     successful_shutdowns += 1;
                 }
                 Err(_) => {
-                    warn!("Task {} did not shutdown within timeout, forcing termination", i);
+                    warn!(
+                        "Task {} did not shutdown within timeout, forcing termination",
+                        i
+                    );
                     // Note: JoinHandle is already dropped here, so task is aborted
                 }
             }
         }
-        
-        info!("Shutdown complete: {}/{} tasks shutdown gracefully", 
-              successful_shutdowns, handles_count);
-        
+
+        info!(
+            "Shutdown complete: {}/{} tasks shutdown gracefully",
+            successful_shutdowns, handles_count
+        );
+
         info!("Consumer shutdown complete");
         Ok(())
     }
-    
+
     /// Spawn the main consumer loop
     fn spawn_consumer_loop(&self, task_tx: mpsc::Sender<ProcessingTask>) -> JoinHandle<()> {
         let consumer = self.consumer.clone();
         let metrics = self.metrics.clone();
         let backpressure = self.backpressure.clone();
         let mut shutdown_rx = self.shutdown_rx.clone();
-        
+
         tokio::spawn(async move {
             let mut stream = consumer.stream();
-            
+
             while !*shutdown_rx.borrow() {
                 tokio::select! {
                     _ = shutdown_rx.changed() => {
@@ -301,7 +327,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                         match message {
                             Some(Ok(msg)) => {
                                 metrics.increment_consumed();
-                                
+
                                 // Check backpressure
                                 if backpressure.should_pause() {
                                     if let Ok(assignment) = consumer.assignment() {
@@ -309,20 +335,20 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                                     }
                                     continue;
                                 }
-                                
+
                                 if backpressure.should_resume() {
                                     if let Ok(assignment) = consumer.assignment() {
                                         consumer.resume(&assignment).ok();
                                     }
                                 }
-                                
+
                                 // Create processing task
                                 let task = ProcessingTask {
                                     message: msg.detach(),
                                     attempt: 0,
                                     start_time: Instant::now(),
                                 };
-                                
+
                                 // Send to processing queue
                                 if task_tx.send(task).await.is_err() {
                                     warn!("Processing channel closed");
@@ -340,11 +366,14 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             }
         })
     }
-    
+
     /// Spawn worker pool with distributor
-    async fn spawn_worker_pool(&self, main_task_rx: mpsc::Receiver<ProcessingTask>) -> Vec<JoinHandle<()>> {
+    async fn spawn_worker_pool(
+        &self,
+        main_task_rx: mpsc::Receiver<ProcessingTask>,
+    ) -> Vec<JoinHandle<()>> {
         let mut handles = vec![];
-        
+
         if self.config.num_workers == 1 {
             // Single worker - direct connection for efficiency
             let worker_handle = self.spawn_processor_worker(0, main_task_rx);
@@ -352,23 +381,30 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         } else {
             // Multiple workers - use distributor pattern
             let worker_channels: Vec<_> = (0..self.config.num_workers)
-                .map(|_| mpsc::channel::<ProcessingTask>(self.config.channel_buffer_size / self.config.num_workers))
+                .map(|_| {
+                    mpsc::channel::<ProcessingTask>(
+                        self.config.channel_buffer_size / self.config.num_workers,
+                    )
+                })
                 .collect();
-            
+
             // Spawn distributor task
-            let distributor_handle = self.spawn_distributor_task(main_task_rx, worker_channels.iter().map(|(tx, _)| tx.clone()).collect());
+            let distributor_handle = self.spawn_distributor_task(
+                main_task_rx,
+                worker_channels.iter().map(|(tx, _)| tx.clone()).collect(),
+            );
             handles.push(distributor_handle);
-            
+
             // Spawn worker tasks
             for (worker_id, (_, rx)) in worker_channels.into_iter().enumerate() {
                 let worker_handle = self.spawn_processor_worker(worker_id, rx);
                 handles.push(worker_handle);
             }
         }
-        
+
         handles
     }
-    
+
     /// Spawn distributor task that round-robin distributes work
     fn spawn_distributor_task(
         &self,
@@ -376,7 +412,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         worker_senders: Vec<mpsc::Sender<ProcessingTask>>,
     ) -> JoinHandle<()> {
         let shutdown_state = self.shutdown_state.clone();
-        
+
         // Worker health tracking with circuit breaker pattern
         #[derive(Debug)]
         struct WorkerState {
@@ -384,11 +420,14 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             last_failure: Option<Instant>,
             circuit_open: bool,
         }
-        
+
         tokio::spawn(async move {
-            info!("Distributor task started with {} workers", worker_senders.len());
+            info!(
+                "Distributor task started with {} workers",
+                worker_senders.len()
+            );
             let mut current_worker = 0;
-            
+
             // Initialize worker states
             let mut worker_states: Vec<WorkerState> = (0..worker_senders.len())
                 .map(|_| WorkerState {
@@ -397,19 +436,19 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                     circuit_open: false,
                 })
                 .collect();
-            
+
             const MAX_FAILURES: u32 = 5;
             const CIRCUIT_RESET_DURATION: Duration = Duration::from_secs(30);
-            
+
             while let Some(mut task) = main_rx.recv().await {
                 // Try to distribute to workers, starting with current worker
                 let mut sent = false;
                 let mut attempts = 0;
-                
+
                 for _ in 0..worker_senders.len() {
                     let worker_idx = (current_worker + attempts) % worker_senders.len();
                     let worker_state = &mut worker_states[worker_idx];
-                    
+
                     // Check if circuit should be reset
                     if worker_state.circuit_open {
                         if let Some(last_failure) = worker_state.last_failure {
@@ -420,13 +459,13 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                             }
                         }
                     }
-                    
+
                     // Skip if circuit is open
                     if worker_state.circuit_open {
                         attempts += 1;
                         continue;
                     }
-                    
+
                     match worker_senders[worker_idx].send(task).await {
                         Ok(()) => {
                             sent = true;
@@ -438,23 +477,25 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                             task = send_error.0; // Extract the task from the SendError
                             worker_state.failures += 1;
                             worker_state.last_failure = Some(Instant::now());
-                            
+
                             if worker_state.failures >= MAX_FAILURES {
-                                warn!("Worker {} circuit breaker opened after {} failures", 
-                                      worker_idx, MAX_FAILURES);
+                                warn!(
+                                    "Worker {} circuit breaker opened after {} failures",
+                                    worker_idx, MAX_FAILURES
+                                );
                                 worker_state.circuit_open = true;
                             }
-                            
+
                             attempts += 1;
                         }
                     }
                 }
-                
+
                 if !sent {
                     error!("Failed to distribute task to any worker - all circuits may be open");
                     // Ensure inflight message is removed to prevent deadlock
                     shutdown_state.remove_inflight_message().await;
-                    
+
                     // Check if all workers are failed
                     let all_failed = worker_states.iter().all(|s| s.circuit_open);
                     if all_failed {
@@ -462,15 +503,15 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                         break;
                     }
                 }
-                
+
                 // Move to next worker
                 current_worker = (current_worker + 1) % worker_senders.len();
             }
-            
+
             info!("Distributor task finished");
         })
     }
-    
+
     /// Spawn a processor worker
     fn spawn_processor_worker(
         &self,
@@ -484,10 +525,10 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         let config = self.config.clone();
         let dlq_producer = self.dlq_producer.clone();
         let shutdown_state = self.shutdown_state.clone();
-        
+
         tokio::spawn(async move {
             info!("Processor worker {} started", worker_id);
-            
+
             if config.enable_batching {
                 // Batch processing mode
                 Self::run_batch_processor(
@@ -500,7 +541,8 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                     config,
                     dlq_producer,
                     shutdown_state,
-                ).await;
+                )
+                .await;
             } else {
                 // Single message processing mode
                 Self::run_single_processor(
@@ -513,11 +555,12 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                     config,
                     dlq_producer,
                     shutdown_state,
-                ).await;
+                )
+                .await;
             }
         })
     }
-    
+
     /// Run batch processor
     async fn run_batch_processor(
         worker_id: usize,
@@ -533,7 +576,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         let mut batch = Vec::with_capacity(config.batch_size);
         let mut batch_timer = tokio::time::interval(config.batch_timeout);
         batch_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        
+
         loop {
             tokio::select! {
                 // Receive new task
@@ -541,7 +584,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                     match task_option {
                         Some(task) => {
                             batch.push(task);
-                            
+
                             // Process batch if it's full
                             if batch.len() >= config.batch_size {
                                 Self::process_batch(
@@ -575,7 +618,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                         }
                     }
                 }
-                
+
                 // Batch timeout - process current batch
                 _ = batch_timer.tick() => {
                     if !batch.is_empty() {
@@ -594,10 +637,10 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                 }
             }
         }
-        
+
         info!("Batch processor worker {} finished", worker_id);
     }
-    
+
     /// Run single message processor
     async fn run_single_processor(
         worker_id: usize,
@@ -613,7 +656,7 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         while let Some(mut task) = task_rx.recv().await {
             // Track inflight message
             shutdown_state.add_inflight_message().await;
-                
+
             // Acquire backpressure permit
             let _permit = match backpressure.acquire().await {
                 Ok(permit) => permit,
@@ -624,40 +667,46 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                     continue;
                 }
             };
-            
+
             // Process message with retry
             let result = process_message_with_retry(
                 processor.as_ref(),
                 &task.message,
                 &config,
                 &mut task.attempt,
-            ).await;
-            
+            )
+            .await;
+
             let processing_duration = task.start_time.elapsed();
-            
+
             match result {
                 Ok(()) => {
                     metrics.increment_processed();
                     processor.on_success(&task.message).await;
-                    
+
                     // Mark offset for commit
-                    offset_manager.mark_offset(
-                        task.message.topic(),
-                        task.message.partition(),
-                        task.message.offset(),
-                    ).await;
-                    
+                    offset_manager
+                        .mark_offset(
+                            task.message.topic(),
+                            task.message.partition(),
+                            task.message.offset(),
+                        )
+                        .await;
+
                     // Record success in backpressure controller
                     backpressure.record_success(processing_duration).await;
                 }
                 Err(e) => {
                     metrics.increment_failed();
                     processor.on_failure(&e, &task.message).await;
-                    
+
                     // Send to DLQ if configured and max retries exceeded
                     if task.attempt >= config.dlq_after_retries {
                         if let Some(dlq) = &dlq_producer {
-                            if let Err(dlq_err) = dlq.send_message(&task.message, &e.to_string(), task.attempt).await {
+                            if let Err(dlq_err) = dlq
+                                .send_message(&task.message, &e.to_string(), task.attempt)
+                                .await
+                            {
                                 error!("Failed to send to DLQ: {}", dlq_err);
                                 metrics.increment_dlq_failures();
                                 metrics.record_error("dlq_send_failed");
@@ -666,27 +715,27 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                             }
                         }
                     }
-                    
+
                     // Record failure in backpressure controller
                     backpressure.record_failure().await;
                 }
             }
-            
+
             // Record processing duration
             metrics.record_processing_duration(processing_duration);
-            
+
             // Update message size estimate (if we have payload size)
             if let Some(payload) = task.message.payload() {
                 backpressure.update_avg_message_size(payload.len());
             }
-            
+
             // Remove inflight message
             shutdown_state.remove_inflight_message().await;
         }
-        
+
         info!("Single processor worker {} finished", worker_id);
     }
-    
+
     /// Process a batch of messages
     async fn process_batch(
         batch: &[ProcessingTask],
@@ -701,22 +750,25 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
         if batch.is_empty() {
             return;
         }
-        
+
         debug!("Processing batch of {} messages", batch.len());
         let batch_start = std::time::Instant::now();
-        
+
         // Track inflight messages
         for _ in batch {
             shutdown_state.add_inflight_message().await;
         }
-        
+
         // Acquire backpressure permits for the entire batch
         let mut permits = Vec::with_capacity(batch.len());
         for i in 0..batch.len() {
             match backpressure.acquire().await {
                 Ok(permit) => permits.push(permit),
                 Err(e) => {
-                    error!("Failed to acquire backpressure permit for batch item {}: {}", i, e);
+                    error!(
+                        "Failed to acquire backpressure permit for batch item {}: {}",
+                        i, e
+                    );
                     metrics.record_error("backpressure_error");
                     // Remove the inflight messages we added for items we couldn't get permits for
                     for _ in i..batch.len() {
@@ -730,42 +782,44 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                 }
             }
         }
-        
+
         // Process each message in the batch
         for task in batch {
             let mut attempt = task.attempt;
-            let result = process_message_with_retry(
-                processor.as_ref(),
-                &task.message,
-                config,
-                &mut attempt,
-            ).await;
-            
+            let result =
+                process_message_with_retry(processor.as_ref(), &task.message, config, &mut attempt)
+                    .await;
+
             let processing_duration = task.start_time.elapsed();
-            
+
             match result {
                 Ok(()) => {
                     metrics.increment_processed();
                     processor.on_success(&task.message).await;
-                    
+
                     // Mark offset for commit
-                    offset_manager.mark_offset(
-                        task.message.topic(),
-                        task.message.partition(),
-                        task.message.offset(),
-                    ).await;
-                    
+                    offset_manager
+                        .mark_offset(
+                            task.message.topic(),
+                            task.message.partition(),
+                            task.message.offset(),
+                        )
+                        .await;
+
                     // Record success in backpressure controller
                     backpressure.record_success(processing_duration).await;
                 }
                 Err(e) => {
                     metrics.increment_failed();
                     processor.on_failure(&e, &task.message).await;
-                    
+
                     // Send to DLQ if configured and max retries exceeded
                     if attempt >= config.dlq_after_retries {
                         if let Some(dlq) = dlq_producer {
-                            if let Err(dlq_err) = dlq.send_message(&task.message, &e.to_string(), attempt).await {
+                            if let Err(dlq_err) = dlq
+                                .send_message(&task.message, &e.to_string(), attempt)
+                                .await
+                            {
                                 error!("Failed to send to DLQ: {}", dlq_err);
                                 metrics.increment_dlq_failures();
                                 metrics.record_error("dlq_send_failed");
@@ -774,36 +828,40 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
                             }
                         }
                     }
-                    
+
                     // Record failure in backpressure controller
                     backpressure.record_failure().await;
                 }
             }
-            
+
             // Record processing duration
             metrics.record_processing_duration(processing_duration);
-            
+
             // Update message size estimate (if we have payload size)
             if let Some(payload) = task.message.payload() {
                 backpressure.update_avg_message_size(payload.len());
             }
-            
+
             // Remove inflight message
             shutdown_state.remove_inflight_message().await;
         }
-        
-        debug!("Batch of {} messages processed in {:?}", batch.len(), batch_start.elapsed());
+
+        debug!(
+            "Batch of {} messages processed in {:?}",
+            batch.len(),
+            batch_start.elapsed()
+        );
     }
-    
+
     /// Spawn metrics reporter
     fn spawn_metrics_reporter(&self) -> JoinHandle<()> {
         let metrics = self.metrics.clone();
         let interval = self.config.metrics_interval;
         let mut shutdown_rx = self.shutdown_rx.clone();
-        
+
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(interval);
-            
+
             loop {
                 tokio::select! {
                     _ = ticker.tick() => {
@@ -822,17 +880,17 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             }
         })
     }
-    
+
     /// Spawn offset committer
     fn spawn_offset_committer(&self) -> JoinHandle<()> {
         let consumer = self.consumer.clone();
         let offset_manager = self.offset_manager.clone();
         let metrics = self.metrics.clone();
         let mut shutdown_rx = self.shutdown_rx.clone();
-        
+
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(5));
-            
+
             loop {
                 tokio::select! {
                     _ = ticker.tick() => {
@@ -851,9 +909,12 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             }
         })
     }
-    
+
     /// Enable adaptive backpressure control
-    pub fn spawn_adaptive_controller(&self, config: crate::consumer::backpressure::AdaptiveBackpressureConfig) -> JoinHandle<()> {
+    pub fn spawn_adaptive_controller(
+        &self,
+        config: crate::consumer::backpressure::AdaptiveBackpressureConfig,
+    ) -> JoinHandle<()> {
         let controller = crate::consumer::backpressure::AdaptiveBackpressureController::new(
             config.initial_inflight,
             config.min_inflight,
@@ -864,22 +925,24 @@ impl<P: MessageProcessor> RedpandaConsumer<P> {
             config.target_latency,
             config.target_success_rate,
         );
-        
+
         tokio::spawn(async move {
             controller.run_adjustment_loop().await;
         })
     }
-    
+
     /// Shutdown the consumer gracefully
     pub async fn shutdown(&self) -> ConsumerResult<()> {
         info!("Initiating consumer shutdown");
-        
+
         // Start shutdown process
         self.shutdown_state.start_shutdown().await;
-        
+
         // Signal all workers to stop
-        self.shutdown_tx.send(true).map_err(|_| ConsumerError::ShutdownError("Failed to send shutdown signal".to_string()))?;
-        
+        self.shutdown_tx.send(true).map_err(|_| {
+            ConsumerError::ShutdownError("Failed to send shutdown signal".to_string())
+        })?;
+
         // Wait for all inflight messages to complete
         let timeout = Duration::from_secs(30);
         match self.shutdown_state.wait_for_completion(timeout).await {
@@ -910,11 +973,14 @@ async fn process_message_with_retry<P: MessageProcessor>(
     attempt: &mut u32,
 ) -> Result<(), P::Error> {
     let executor = RetryExecutor::new(config.retry_policy.clone());
-    
-    match executor.execute_with_predicate(
-        || async { processor.process(message).await },
-        |e| processor.is_retryable(e)
-    ).await {
+
+    match executor
+        .execute_with_predicate(
+            || async { processor.process(message).await },
+            |e| processor.is_retryable(e),
+        )
+        .await
+    {
         RetryResult::Success { value, attempts } => {
             *attempt = attempts;
             Ok(value)
@@ -930,7 +996,7 @@ impl<P: MessageProcessor> Drop for RedpandaConsumer<P> {
     fn drop(&mut self) {
         // Signal shutdown to prevent new messages
         let _ = self.shutdown_tx.send(true);
-        
+
         // Note: We cannot perform async operations in Drop, so the actual graceful
         // shutdown with offset commit should be done by calling shutdown() explicitly
         // before the consumer is dropped.
@@ -939,7 +1005,7 @@ impl<P: MessageProcessor> Drop for RedpandaConsumer<P> {
         // when the Arc is dropped, but this might not commit pending offsets.
         //
         // Best practice: Always call shutdown() explicitly before dropping the consumer.
-        
+
         tracing::warn!(
             "RedpandaConsumer dropped - ensure shutdown() was called for graceful cleanup"
         );

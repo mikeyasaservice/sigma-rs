@@ -1,6 +1,6 @@
 use super::SimpleEvent;
-use serde_json::{Value, Map};
 use chrono::{DateTime, Utc};
+use serde_json::{Map, Value};
 
 /// Builder for creating test events
 pub struct EventBuilder {
@@ -16,19 +16,19 @@ impl EventBuilder {
             timestamp: None,
         }
     }
-    
+
     /// Add a field to the event
     pub fn field<K: Into<String>, V: Into<Value>>(mut self, key: K, value: V) -> Self {
         self.fields.insert(key.into(), value.into());
         self
     }
-    
+
     /// Set the timestamp for the event
     pub fn timestamp(mut self, timestamp: DateTime<Utc>) -> Self {
         self.timestamp = Some(timestamp);
         self
     }
-    
+
     /// Build the SimpleEvent
     pub fn build(self) -> SimpleEvent {
         let mut event = SimpleEvent::new(self.fields);

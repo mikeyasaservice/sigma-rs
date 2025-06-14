@@ -45,8 +45,8 @@ impl StringMatcher for PrefixPattern {
         let value = handle_whitespace(value, self.no_collapse_ws);
         if self.lowercase {
             // Use case-insensitive prefix check without allocation
-            value.len() >= self.token.len() && 
-            value[..self.token.len()].eq_ignore_ascii_case(&*self.token)
+            value.len() >= self.token.len()
+                && value[..self.token.len()].eq_ignore_ascii_case(&*self.token)
         } else {
             value.starts_with(&*self.token)
         }
@@ -212,7 +212,7 @@ pub fn escape_sigma_for_glob(pattern: &str) -> String {
 
     // Reverse the result since we built it backwards
     result.reverse();
-    
+
     // We only deal with ASCII characters from the original string
     // and backslashes, so this conversion should never fail
     String::from_utf8(result).unwrap_or_else(|_| {
@@ -220,7 +220,6 @@ pub fn escape_sigma_for_glob(pattern: &str) -> String {
         pattern.to_string()
     })
 }
-
 
 #[cfg(test)]
 mod tests {

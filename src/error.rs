@@ -1,6 +1,6 @@
+use std::fmt::Display;
 /// Error types for the Sigma rule engine
 use thiserror::Error;
-use std::fmt::Display;
 
 /// Main error type for Sigma rule engine operations
 #[derive(Error, Debug)]
@@ -8,11 +8,11 @@ pub enum SigmaError {
     /// Error during rule parsing
     #[error("Parse error: {0}")]
     Parse(String),
-    
+
     /// Error from the lexical analyzer
     #[error("Lexer error: {0}")]
     Lexer(String),
-    
+
     /// Invalid token sequence encountered during parsing
     #[error("Invalid token sequence: expected {expected}, found {found}")]
     InvalidTokenSequence {
@@ -21,74 +21,74 @@ pub enum SigmaError {
         /// Actual token found
         found: String,
     },
-    
+
     /// Detection field is missing from the rule
     #[error("Missing detection field")]
     MissingDetection,
-    
+
     /// Condition is missing from the detection section
     #[error("Missing condition in detection")]
     MissingCondition,
-    
+
     /// Referenced condition item is missing
     #[error("Missing condition item: {key}")]
-    MissingConditionItem { 
+    MissingConditionItem {
         /// Key of the missing condition item
-        key: String 
+        key: String,
     },
-    
+
     /// Token type is not supported
     #[error("Unsupported token: {0}")]
     UnsupportedToken(String),
-    
+
     /// Rule with specified ID or name not found
     #[error("Rule not found: {0}")]
     RuleNotFound(String),
-    
+
     /// Pattern syntax is invalid
     #[error("Invalid pattern: {0}")]
     InvalidPattern(String),
-    
+
     /// Rule format does not conform to Sigma specification
     #[error("Invalid rule format: {0}")]
     InvalidRule(String),
-    
+
     /// YAML parsing failed
     #[error("YAML parse error: {0}")]
     YamlParse(#[from] serde_yaml::Error),
-    
+
     /// JSON parsing failed
     #[error("JSON parse error: {0}")]
     JsonParse(#[from] serde_json::Error),
-    
+
     /// Regular expression compilation failed
     #[error("Regex error: {0}")]
     Regex(#[from] regex::Error),
-    
+
     /// Glob pattern compilation failed
     #[error("Glob pattern error: {0}")]
     Glob(#[from] glob::PatternError),
-    
+
     /// IO operation failed
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     /// Kafka/Redpanda operation failed
     #[error("Kafka error: {0}")]
     Kafka(String),
-    
+
     /// Configuration is invalid or incomplete
     #[error("Invalid configuration: {0}")]
     Configuration(String),
-    
+
     /// Runtime execution error
     #[error("Runtime error: {0}")]
     Runtime(String),
-    
+
     /// Security violation detected
     #[error("Security violation: {0}")]
     Security(String),
-    
+
     /// Resource limit exceeded
     #[error("Resource limit exceeded: {limit_type} - {details}")]
     ResourceLimitExceeded {
@@ -97,7 +97,7 @@ pub enum SigmaError {
         /// Additional details about the limit violation
         details: String,
     },
-    
+
     /// Potentially unsafe regex pattern detected
     #[error("Unsafe regex pattern detected: {pattern} - {reason}")]
     UnsafeRegex {
@@ -106,11 +106,11 @@ pub enum SigmaError {
         /// Reason why the pattern is considered unsafe
         reason: String,
     },
-    
+
     /// Invalid matcher configuration
     #[error("Invalid matcher configuration: {0}")]
     InvalidMatcher(String),
-    
+
     /// Generic error from anyhow
     #[error("Error: {0}")]
     Other(#[from] anyhow::Error),
@@ -155,7 +155,7 @@ impl Display for ParseError {
 pub trait ErrorContext<T> {
     /// Add context to an error
     fn context(self, msg: impl Into<String>) -> Result<T>;
-    
+
     /// Add context with format
     fn with_context<F>(self, f: F) -> Result<T>
     where
@@ -166,7 +166,7 @@ impl<T> ErrorContext<T> for Result<T> {
     fn context(self, msg: impl Into<String>) -> Result<T> {
         self.map_err(|e| SigmaError::Runtime(format!("{}: {}", msg.into(), e)))
     }
-    
+
     fn with_context<F>(self, f: F) -> Result<T>
     where
         F: FnOnce() -> String,
@@ -178,19 +178,22 @@ impl<T> ErrorContext<T> for Result<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_error_display() {
         let err = SigmaError::Parse("invalid syntax".to_string());
         assert_eq!(err.to_string(), "Parse error: invalid syntax");
-        
+
         let err = SigmaError::InvalidTokenSequence {
             expected: "identifier".to_string(),
             found: "keyword".to_string(),
         };
-        assert_eq!(err.to_string(), "Invalid token sequence: expected identifier, found keyword");
+        assert_eq!(
+            err.to_string(),
+            "Invalid token sequence: expected identifier, found keyword"
+        );
     }
-    
+
     #[test]
     fn test_bulk_parse_error() {
         let bulk = BulkParseError {
@@ -205,17 +208,20 @@ mod tests {
                 },
             ],
         };
-        
+
         let display = bulk.to_string();
         assert!(display.contains("Failed to parse 2 rules"));
         assert!(display.contains("rule1.yml"));
         assert!(display.contains("rule2.yml"));
     }
-    
+
     #[test]
     fn test_error_context() {
         let result: Result<()> = Err(SigmaError::Parse("test".to_string()));
         let with_context = result.context("while parsing rule");
-        assert!(with_context.unwrap_err().to_string().contains("while parsing rule"));
+        assert!(with_context
+            .unwrap_err()
+            .to_string()
+            .contains("while parsing rule"));
     }
 }

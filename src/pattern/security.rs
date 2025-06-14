@@ -1,11 +1,11 @@
 //! Security utilities for pattern matching
-//! 
+//!
 //! This module provides protections against common security vulnerabilities
 //! in pattern matching, particularly ReDoS (Regular Expression Denial of Service).
 
 use crate::error::SigmaError;
-use regex::Regex;
 use once_cell::sync::Lazy;
+use regex::Regex;
 
 /// Maximum regex compilation time in milliseconds (reserved for future timeout implementation)
 #[allow(dead_code)]
@@ -17,7 +17,7 @@ const MAX_REGEX_PATTERN_LENGTH: usize = 1000;
 /// Maximum DFA size limit (2 MB)
 const MAX_DFA_SIZE: usize = 2 * 1024 * 1024;
 
-/// Maximum NFA size limit (10 MB) 
+/// Maximum NFA size limit (10 MB)
 const MAX_NFA_SIZE: usize = 10 * 1024 * 1024;
 
 /// Pre-compiled ReDoS detection patterns for performance
@@ -36,14 +36,15 @@ static REDOS_COMPILED_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
         r"\(a\*\)\+",
         r"\(a\|a\)\*",
     ];
-    
-    patterns.iter()
+
+    patterns
+        .iter()
         .filter_map(|pattern| Regex::new(pattern).ok())
         .collect()
 });
 
 /// Validate and compile a regex pattern safely
-/// 
+///
 /// This function protects against ReDoS attacks by:
 /// - Checking pattern length limits
 /// - Scanning for known dangerous patterns
@@ -54,8 +55,11 @@ pub fn safe_regex_compile(pattern: &str) -> Result<Regex, SigmaError> {
     if pattern.len() > MAX_REGEX_PATTERN_LENGTH {
         return Err(SigmaError::UnsafeRegex {
             pattern: pattern.to_string(),
-            reason: format!("Pattern too long: {} characters (max: {})", 
-                          pattern.len(), MAX_REGEX_PATTERN_LENGTH),
+            reason: format!(
+                "Pattern too long: {} characters (max: {})",
+                pattern.len(),
+                MAX_REGEX_PATTERN_LENGTH
+            ),
         });
     }
 
@@ -66,17 +70,20 @@ pub fn safe_regex_compile(pattern: &str) -> Result<Regex, SigmaError> {
             reason: "Empty regex pattern".to_string(),
         });
     }
-    
+
     // Scan for known ReDoS patterns using pre-compiled regexes
     for redos_regex in REDOS_COMPILED_PATTERNS.iter() {
         if redos_regex.is_match(pattern) {
             return Err(SigmaError::UnsafeRegex {
                 pattern: pattern.to_string(),
-                reason: format!("Pattern matches known ReDoS vulnerability: {}", redos_regex.as_str()),
+                reason: format!(
+                    "Pattern matches known ReDoS vulnerability: {}",
+                    redos_regex.as_str()
+                ),
             });
         }
     }
-    
+
     // Check for excessive nesting
     if has_excessive_nesting(pattern) {
         return Err(SigmaError::UnsafeRegex {
@@ -84,7 +91,7 @@ pub fn safe_regex_compile(pattern: &str) -> Result<Regex, SigmaError> {
             reason: "Pattern has excessive nesting depth".to_string(),
         });
     }
-    
+
     // Check for catastrophic backtracking patterns
     if has_catastrophic_backtracking(pattern) {
         return Err(SigmaError::UnsafeRegex {
@@ -111,10 +118,10 @@ pub fn safe_regex_compile(pattern: &str) -> Result<Regex, SigmaError> {
 /// Check for excessive nesting in regex pattern
 fn has_excessive_nesting(pattern: &str) -> bool {
     const MAX_NESTING_DEPTH: usize = 10;
-    
+
     let mut depth: usize = 0;
     let mut max_depth: usize = 0;
-    
+
     for ch in pattern.chars() {
         match ch {
             '(' => {
@@ -127,7 +134,7 @@ fn has_excessive_nesting(pattern: &str) -> bool {
             _ => {}
         }
     }
-    
+
     max_depth > MAX_NESTING_DEPTH
 }
 
@@ -139,8 +146,9 @@ static CATASTROPHIC_BACKTRACKING_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
         r"\([^)]*\+[^)]*\)\*",
         r"\([^)]*\*[^)]*\)\+",
     ];
-    
-    patterns.iter()
+
+    patterns
+        .iter()
         .filter_map(|pattern| Regex::new(pattern).ok())
         .collect()
 });
@@ -153,7 +161,7 @@ fn has_catastrophic_backtracking(pattern: &str) -> bool {
             return true;
         }
     }
-    
+
     // Look for alternation with overlapping patterns
     if pattern.contains("(.*|.*)")
         || pattern.contains("(.+|.+)")
@@ -161,7 +169,7 @@ fn has_catastrophic_backtracking(pattern: &str) -> bool {
     {
         return true;
     }
-    
+
     false
 }
 
@@ -171,7 +179,7 @@ pub struct RegexSecurityConfig {
     /// Maximum pattern length
     pub max_pattern_length: usize,
     /// Maximum DFA size
-    pub max_dfa_size: usize, 
+    pub max_dfa_size: usize,
     /// Maximum NFA size
     pub max_nfa_size: usize,
     /// Enable ReDoS pattern scanning
@@ -191,15 +199,18 @@ impl Default for RegexSecurityConfig {
 
 /// Compile regex with custom security configuration
 pub fn safe_regex_compile_with_config(
-    pattern: &str, 
-    config: &RegexSecurityConfig
+    pattern: &str,
+    config: &RegexSecurityConfig,
 ) -> Result<Regex, SigmaError> {
     // Check pattern length
     if pattern.len() > config.max_pattern_length {
         return Err(SigmaError::UnsafeRegex {
             pattern: pattern.to_string(),
-            reason: format!("Pattern too long: {} characters (max: {})", 
-                          pattern.len(), config.max_pattern_length),
+            reason: format!(
+                "Pattern too long: {} characters (max: {})",
+                pattern.len(),
+                config.max_pattern_length
+            ),
         });
     }
 
@@ -209,7 +220,10 @@ pub fn safe_regex_compile_with_config(
             if redos_regex.is_match(pattern) {
                 return Err(SigmaError::UnsafeRegex {
                     pattern: pattern.to_string(),
-                    reason: format!("Pattern matches known ReDoS vulnerability: {}", redos_regex.as_str()),
+                    reason: format!(
+                        "Pattern matches known ReDoS vulnerability: {}",
+                        redos_regex.as_str()
+                    ),
                 });
             }
         }
@@ -247,8 +261,11 @@ mod tests {
         ];
 
         for pattern in &safe_patterns {
-            assert!(safe_regex_compile(pattern).is_ok(), 
-                   "Safe pattern should compile: {}", pattern);
+            assert!(
+                safe_regex_compile(pattern).is_ok(),
+                "Safe pattern should compile: {}",
+                pattern
+            );
         }
     }
 
@@ -256,15 +273,18 @@ mod tests {
     fn test_unsafe_patterns() {
         // These should be rejected
         let unsafe_patterns = [
-            "",  // Empty pattern
+            "",       // Empty pattern
             "(a+)+",  // Nested quantifiers
             "(a*)*",  // Nested quantifiers
-            "(a|a)*",  // Alternation with overlap
+            "(a|a)*", // Alternation with overlap
         ];
 
         for pattern in &unsafe_patterns {
-            assert!(safe_regex_compile(pattern).is_err(), 
-                   "Unsafe pattern should be rejected: {}", pattern);
+            assert!(
+                safe_regex_compile(pattern).is_err(),
+                "Unsafe pattern should be rejected: {}",
+                pattern
+            );
         }
     }
 
@@ -272,7 +292,7 @@ mod tests {
     fn test_excessive_nesting() {
         let deeply_nested = "((((((((((a))))))))))";
         assert!(!has_excessive_nesting(deeply_nested));
-        
+
         let too_deeply_nested = "(((((((((((a)))))))))))";
         assert!(has_excessive_nesting(too_deeply_nested));
     }
@@ -290,7 +310,7 @@ mod tests {
         let long_pattern = "a".repeat(MAX_REGEX_PATTERN_LENGTH + 1);
         let result = safe_regex_compile(&long_pattern);
         assert!(result.is_err());
-        
+
         if let Err(SigmaError::UnsafeRegex { reason, .. }) = result {
             assert!(reason.contains("Pattern too long"));
         }
@@ -311,7 +331,7 @@ mod tests {
         // Should accept simple patterns when ReDoS scanning is disabled
         let result = safe_regex_compile_with_config("test", &config);
         assert!(result.is_ok());
-        
+
         // Pattern that would normally be rejected by ReDoS scanning should be allowed when disabled
         // Note: This specific pattern might still be rejected by the regex engine's own limits
         let result = safe_regex_compile_with_config("(a+)+", &config);

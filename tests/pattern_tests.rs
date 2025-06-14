@@ -1,7 +1,7 @@
 //! Integration tests for pattern matching functionality
 
-use sigma_rs::pattern::*;
 use sigma_rs::ast::{FieldPattern, FieldRule};
+use sigma_rs::pattern::*;
 use std::sync::Arc;
 
 #[test]
@@ -38,7 +38,8 @@ fn test_prefix_pattern() {
         false,
         false,
         vec!["test".to_string()],
-    ).unwrap();
+    )
+    .unwrap();
 
     assert!(matcher.string_match("test"));
     assert!(matcher.string_match("testing"));
@@ -53,7 +54,8 @@ fn test_suffix_pattern() {
         false,
         false,
         vec!["test".to_string()],
-    ).unwrap();
+    )
+    .unwrap();
 
     assert!(matcher.string_match("test"));
     assert!(matcher.string_match("pretest"));
@@ -68,7 +70,8 @@ fn test_contains_pattern() {
         false,
         false,
         vec!["test".to_string()],
-    ).unwrap();
+    )
+    .unwrap();
 
     assert!(matcher.string_match("test"));
     assert!(matcher.string_match("testing"));
@@ -84,7 +87,8 @@ fn test_glob_pattern() {
         false,
         false,
         vec!["test*".to_string()],
-    ).unwrap();
+    )
+    .unwrap();
 
     assert!(matcher.string_match("test"));
     assert!(matcher.string_match("testing"));
@@ -99,7 +103,8 @@ fn test_regex_pattern() {
         false,
         false,
         vec![r"test\d+".to_string()],
-    ).unwrap();
+    )
+    .unwrap();
 
     assert!(matcher.string_match("test123"));
     assert!(matcher.string_match("test456"));
@@ -123,9 +128,10 @@ fn test_whitespace_collapsing() {
         TextPatternModifier::None,
         false,
         false,
-        false,  // collapse whitespace
+        false, // collapse whitespace
         vec!["test value".to_string()],
-    ).unwrap();
+    )
+    .unwrap();
 
     assert!(matcher.string_match("test value"));
     assert!(matcher.string_match("test  value"));
@@ -139,9 +145,10 @@ fn test_no_whitespace_collapsing() {
         TextPatternModifier::None,
         false,
         false,
-        true,  // no collapse whitespace
+        true, // no collapse whitespace
         vec!["test  value".to_string()],
-    ).unwrap();
+    )
+    .unwrap();
 
     assert!(!matcher.string_match("test value"));
     assert!(matcher.string_match("test  value"));
@@ -152,10 +159,11 @@ fn test_multiple_patterns_or() {
     let matcher = new_string_matcher(
         TextPatternModifier::None,
         false,
-        false,  // OR logic
+        false, // OR logic
         false,
         vec!["test1".to_string(), "test2".to_string()],
-    ).unwrap();
+    )
+    .unwrap();
 
     assert!(matcher.string_match("test1"));
     assert!(matcher.string_match("test2"));
@@ -167,10 +175,11 @@ fn test_multiple_patterns_and() {
     let matcher = new_string_matcher(
         TextPatternModifier::None,
         false,
-        true,  // AND logic (all)
+        true, // AND logic (all)
         false,
         vec!["test".to_string(), "value".to_string()],
-    ).unwrap();
+    )
+    .unwrap();
 
     // This is tricky - AND means all patterns must match the same string
     // But the factory might need adjustment for this to work correctly
@@ -184,7 +193,8 @@ fn test_keyword_pattern() {
         false,
         false,
         vec!["error".to_string()],
-    ).unwrap();
+    )
+    .unwrap();
 
     assert!(matcher.string_match("error"));
     assert!(matcher.string_match("an error occurred"));
@@ -197,7 +207,8 @@ fn test_field_pattern_string() {
         "EventID".to_string(),
         "1".to_string(),
         TextPatternModifier::None,
-    ).unwrap();
+    )
+    .unwrap();
 
     match &rule.pattern {
         FieldPattern::String { pattern_desc, .. } => {
@@ -210,7 +221,7 @@ fn test_field_pattern_string() {
 #[test]
 fn test_escape_sigma_for_glob() {
     use sigma_rs::pattern::string_matcher::escape_sigma_for_glob;
-    
+
     assert_eq!(escape_sigma_for_glob("test"), "test");
     assert_eq!(escape_sigma_for_glob("*"), "*");
     assert_eq!(escape_sigma_for_glob("\\*"), "\\*");
@@ -229,7 +240,8 @@ fn test_complex_patterns() {
         false,
         false,
         vec![r"cmd\.exe|powershell\.exe".to_string()],
-    ).unwrap();
+    )
+    .unwrap();
 
     assert!(regex_matcher.string_match("cmd.exe"));
     assert!(regex_matcher.string_match("powershell.exe"));
@@ -242,7 +254,8 @@ fn test_complex_patterns() {
         false,
         false,
         vec!["*.exe".to_string()],
-    ).unwrap();
+    )
+    .unwrap();
 
     assert!(glob_matcher.string_match("cmd.exe"));
     assert!(glob_matcher.string_match("powershell.exe"));

@@ -26,7 +26,10 @@ pub struct PatternMatchResult {
 impl PatternMatchResult {
     /// Create a new pattern match result
     pub fn new(matched: bool, applicable: bool) -> Self {
-        Self { matched, applicable }
+        Self {
+            matched,
+            applicable,
+        }
     }
 
     /// Create a successful match result

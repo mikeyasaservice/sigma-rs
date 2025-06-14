@@ -1,9 +1,8 @@
 /// Property-based testing for Sigma rule engine
 /// Uses proptest to generate random inputs and verify properties
-
 use proptest::prelude::*;
-use sigma_rs::{Event, DynamicEvent, Rule, Selector};
 use serde_json::{json, Value};
+use sigma_rs::{DynamicEvent, Event, Rule, Selector};
 use std::collections::HashMap;
 
 // Strategy for generating field names
@@ -18,25 +17,19 @@ fn field_value_strategy() -> impl Strategy<Value = Value> {
         Just(json!(null)),
         // Boolean values
         any::<bool>().prop_map(|b| json!(b)),
-        // Integer values  
+        // Integer values
         any::<i64>().prop_map(|i| json!(i)),
         // String values
         "[a-zA-Z0-9 _./-]{0,100}".prop_map(|s| json!(s)),
         // Array of strings
-        prop::collection::vec("[a-zA-Z0-9]{0,20}", 0..5)
-            .prop_map(|v| json!(v)),
+        prop::collection::vec("[a-zA-Z0-9]{0,20}", 0..5).prop_map(|v| json!(v)),
     ]
 }
 
 // Strategy for generating events
 fn event_strategy() -> impl Strategy<Value = Value> {
-    prop::collection::hash_map(
-        field_name_strategy(),
-        field_value_strategy(),
-        1..20
-    ).prop_map(|map| {
-        json!(map)
-    })
+    prop::collection::hash_map(field_name_strategy(), field_value_strategy(), 1..20)
+        .prop_map(|map| json!(map))
 }
 
 // Strategy for generating simple rule conditions
@@ -72,20 +65,20 @@ prop_compose! {
         condition in simple_condition_strategy()
     ) -> String {
         let mut yaml = format!("title: {}\nid: {}\ndetection:\n", title, id);
-        
+
         // Add selections based on condition
         let selections: Vec<&str> = condition
             .split_whitespace()
             .filter(|s| !["and", "or", "not", "(", ")"].contains(s))
             .collect();
-            
+
         for selection in selections {
             yaml.push_str(&format!("  {}:\n", selection));
             for (field, value) in &fields {
                 yaml.push_str(&format!("    {}: {:?}\n", field, value));
             }
         }
-        
+
         yaml.push_str(&format!("  condition: {}\n", condition));
         yaml
     }
@@ -120,7 +113,7 @@ proptest! {
     ) {
         // Property: Empty events should be handled gracefully
         let empty_event = DynamicEvent::new(json!({}));
-        
+
         // This should not panic even with an empty event
         if let Ok(parsed_rule) = sigma_rs::rule::rule_from_yaml(rule.as_bytes()) {
             let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -142,14 +135,14 @@ proptest! {
         // Property: Field selection should handle type changes gracefully
         let event1 = json!({ &field: value1 });
         let event2 = json!({ &field: value2 });
-        
+
         let dynamic_event1 = DynamicEvent::new(event1);
         let dynamic_event2 = DynamicEvent::new(event2);
-        
+
         // Both selections should complete without panic
         let (_, found1) = dynamic_event1.select(&field);
         let (_, found2) = dynamic_event2.select(&field);
-        
+
         // If field exists, it should be found
         assert_eq!(found1, true);
         assert_eq!(found2, true);
@@ -163,21 +156,21 @@ proptest! {
         // Property: Nested field access should work correctly
         let mut nested = value;
         let mut path = String::new();
-        
+
         for i in 0..depth {
             let field = format!("field{}", i);
             path.push_str(&field);
-            
+
             nested = json!({ field: nested });
-            
+
             if i < depth - 1 {
                 path.push('.');
             }
         }
-        
+
         let event = DynamicEvent::new(nested);
         let (selected_value, found) = event.select(&path);
-        
+
         // Nested access should work
         if depth == 1 {
             assert!(found);
@@ -225,15 +218,15 @@ proptest! {
             "title: Test\nid: test\ndetection:\n  selection:\n    field: \"{}\"\n  condition: selection",
             text
         );
-        
+
         // Create events with and without the whitespace
         let event_exact = json!({ "field": text });
         let event_collapsed = json!({ "field": text.split_whitespace().collect::<Vec<_>>().join(" ") });
-        
+
         // Test with both whitespace collapse settings
         if let Ok(parsed_rule) = sigma_rs::rule::rule_from_yaml(rule.as_bytes()) {
             let runtime = tokio::runtime::Runtime::new().unwrap();
-            
+
             // Test with whitespace collapse disabled
             let rule_handle_no_collapse = sigma_rs::rule::RuleHandle::new(parsed_rule.clone(), std::path::PathBuf::from("test.yml"))
                 .with_no_collapse_ws(true);
@@ -243,7 +236,7 @@ proptest! {
                     let _ = tree.match_event(&exact_event).await;
                 }
             });
-            
+
             // Test with whitespace collapse enabled (default)
             let rule_handle_collapse = sigma_rs::rule::RuleHandle::new(parsed_rule, std::path::PathBuf::from("test.yml"));
             runtime.block_on(async {
@@ -269,25 +262,25 @@ proptest! {
     ) {
         // Property: Rule components should be independently optional
         let mut rule = format!("title: {}\nid: 12345678-1234-1234-1234-123456789008\n", title);
-        
+
         if let Some(desc) = description {
             rule.push_str(&format!("description: {}\n", desc));
         }
-        
+
         rule.push_str(&format!("level: {}\n", level));
-        
+
         if !tags.is_empty() {
             rule.push_str("tags:\n");
             for tag in &tags {
                 rule.push_str(&format!("  - {}\n", tag));
             }
         }
-        
+
         rule.push_str("detection:\n  selection:\n    EventID: 1\n  condition: selection\n");
-        
+
         // Should parse successfully regardless of optional fields
         let result = sigma_rs::rule::rule_from_yaml(rule.as_bytes());
-        
+
         if let Ok(parsed) = result {
             assert_eq!(parsed.title, title);
             assert_eq!(parsed.level.as_deref(), Some(level));
@@ -298,7 +291,7 @@ proptest! {
 // Stateful property tests for rule evaluation
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(100))]
-    
+
     #[test]
     fn test_rule_determinism(
         rule in sigma_rule_strategy(),
@@ -307,13 +300,13 @@ proptest! {
         // Property: Rule evaluation should be deterministic
         if let Ok(parsed_rule) = sigma_rs::rule::rule_from_yaml(rule.as_bytes()) {
             let dynamic_event = DynamicEvent::new(event.clone());
-            
+
             let runtime = tokio::runtime::Runtime::new().unwrap();
-            
+
             // Build two trees from the same rule
             let rule_handle1 = sigma_rs::rule::RuleHandle::new(parsed_rule.clone(), std::path::PathBuf::from("test.yml"));
             let rule_handle2 = sigma_rs::rule::RuleHandle::new(parsed_rule, std::path::PathBuf::from("test.yml"));
-            
+
             runtime.block_on(async {
                 if let (Ok(tree1), Ok(tree2)) = (
                     sigma_rs::tree::build_tree(rule_handle1).await,
@@ -321,7 +314,7 @@ proptest! {
                 ) {
                     let result1 = tree1.match_event(&dynamic_event).await;
                     let result2 = tree2.match_event(&dynamic_event).await;
-                    
+
                     assert_eq!(result1, result2, "Rule evaluation should be deterministic");
                 }
             });

@@ -1,32 +1,32 @@
 //! Error injection tests to validate robust error handling
-//! 
+//!
 //! This test suite validates that the sigma-rs engine handles
 //! various error conditions gracefully without panicking.
 
 use sigma_rs::{
-    error::SigmaError,
-    pattern::{factory::new_string_matcher, factory::new_num_matcher, TextPatternModifier},
-    matcher::{SimpleAnd, SimpleOr},
     ast::nodes::{NodeSimpleAnd, NodeSimpleOr},
+    error::SigmaError,
+    matcher::{SimpleAnd, SimpleOr},
+    pattern::{factory::new_num_matcher, factory::new_string_matcher, TextPatternModifier},
 };
 
 #[test]
 fn test_empty_pattern_error_handling() {
     // Test empty string patterns
-    let result = new_string_matcher(
-        TextPatternModifier::None,
-        false,
-        false,
-        false,
-        vec![],
-    );
+    let result = new_string_matcher(TextPatternModifier::None, false, false, false, vec![]);
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "No patterns defined for matcher object");
+    assert_eq!(
+        result.unwrap_err(),
+        "No patterns defined for matcher object"
+    );
 
     // Test empty numeric patterns
     let result = new_num_matcher(vec![]);
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "No patterns defined for matcher object");
+    assert_eq!(
+        result.unwrap_err(),
+        "No patterns defined for matcher object"
+    );
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn test_unicode_pattern_handling() {
         "Москва".to_string(),
         "العربية".to_string(),
     ];
-    
+
     let result = new_string_matcher(
         TextPatternModifier::None,
         false,
@@ -143,14 +143,8 @@ fn test_unicode_pattern_handling() {
 #[test]
 fn test_extreme_numeric_values() {
     // Test extreme numeric values
-    let extreme_values = vec![
-        i64::MIN,
-        i64::MAX,
-        0,
-        -1,
-        1,
-    ];
-    
+    let extreme_values = vec![i64::MIN, i64::MAX, 0, -1, 1];
+
     let result = new_num_matcher(extreme_values);
     assert!(result.is_ok());
 }
@@ -158,19 +152,19 @@ fn test_extreme_numeric_values() {
 #[test]
 fn test_pattern_escaping_edge_cases() {
     use sigma_rs::pattern::string_matcher::escape_sigma_for_glob;
-    
+
     // Test various edge cases in pattern escaping
     let edge_cases = vec![
-        "",                    // Empty string
-        "\\",                  // Single backslash
-        "\\\\",                // Double backslash
-        "[",                   // Single bracket
-        "]",                   // Closing bracket
-        "{}",                  // Braces
-        "*?",                  // Wildcards
-        "\\*\\?",              // Escaped wildcards
+        "",       // Empty string
+        "\\",     // Single backslash
+        "\\\\",   // Double backslash
+        "[",      // Single bracket
+        "]",      // Closing bracket
+        "{}",     // Braces
+        "*?",     // Wildcards
+        "\\*\\?", // Escaped wildcards
     ];
-    
+
     for case in edge_cases {
         let result = escape_sigma_for_glob(case);
         // Should not panic and should return a valid string
@@ -182,14 +176,14 @@ fn test_pattern_escaping_edge_cases() {
 fn test_pattern_case_sensitivity_edge_cases() {
     use sigma_rs::pattern::string_matcher::ContentPattern;
     use sigma_rs::pattern::traits::StringMatcher;
-    
+
     // Test edge cases with case sensitivity
     let pattern = ContentPattern {
         token: "Test".to_string(),
         lowercase: true,
         no_collapse_ws: false,
     };
-    
+
     let test_cases = vec![
         ("test", true),
         ("TEST", true),
@@ -198,28 +192,31 @@ fn test_pattern_case_sensitivity_edge_cases() {
         ("testing", false),
         ("", false),
     ];
-    
+
     for (input, expected) in test_cases {
-        assert_eq!(pattern.string_match(input), expected, 
-                  "Failed for input: '{}'", input);
+        assert_eq!(
+            pattern.string_match(input),
+            expected,
+            "Failed for input: '{}'",
+            input
+        );
     }
 }
 
 #[test]
 fn test_whitespace_handling_edge_cases() {
     use sigma_rs::pattern::whitespace::handle_whitespace;
-    
+
     let edge_cases = vec![
-        ("", ""),                          // Empty string
-        ("   ", " "),                      // Only whitespace
-        ("\t\n\r ", " "),                  // Mixed whitespace
-        ("a\0b", "a\0b"),                  // Null character (not whitespace)
-        ("  a  b  ", " a b "),             // Leading/trailing whitespace
+        ("", ""),              // Empty string
+        ("   ", " "),          // Only whitespace
+        ("\t\n\r ", " "),      // Mixed whitespace
+        ("a\0b", "a\0b"),      // Null character (not whitespace)
+        ("  a  b  ", " a b "), // Leading/trailing whitespace
     ];
-    
+
     for (input, expected) in edge_cases {
         let result = handle_whitespace(input, false);
-        assert_eq!(result.as_ref(), expected, 
-                  "Failed for input: '{:?}'", input);
+        assert_eq!(result.as_ref(), expected, "Failed for input: '{:?}'", input);
     }
 }

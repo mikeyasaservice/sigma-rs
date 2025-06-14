@@ -57,20 +57,16 @@ pub fn new_string_matcher(
                     no_collapse_ws,
                 })
             }
-            TextPatternModifier::Suffix => {
-                Box::new(SuffixPattern {
-                    token: intern_pattern(&pattern),
-                    lowercase,
-                    no_collapse_ws,
-                })
-            }
-            TextPatternModifier::Prefix => {
-                Box::new(PrefixPattern {
-                    token: intern_pattern(&pattern),
-                    lowercase,
-                    no_collapse_ws,
-                })
-            }
+            TextPatternModifier::Suffix => Box::new(SuffixPattern {
+                token: intern_pattern(&pattern),
+                lowercase,
+                no_collapse_ws,
+            }),
+            TextPatternModifier::Prefix => Box::new(PrefixPattern {
+                token: intern_pattern(&pattern),
+                lowercase,
+                no_collapse_ws,
+            }),
             _ => {
                 // Handle default cases (None, All, Keyword)
                 if pattern.starts_with('/') && pattern.ends_with('/') && pattern.len() > 2 {
@@ -286,13 +282,7 @@ mod tests {
 
     #[test]
     fn test_empty_patterns_error() {
-        let result = new_string_matcher(
-            TextPatternModifier::None,
-            false,
-            false,
-            false,
-            vec![],
-        );
+        let result = new_string_matcher(TextPatternModifier::None, false, false, false, vec![]);
 
         assert!(result.is_err());
         assert_eq!(
@@ -300,7 +290,7 @@ mod tests {
             "No patterns defined for matcher object"
         );
     }
-    
+
     #[test]
     fn test_memory_allocation_optimization() {
         // Test that factory pre-allocates capacity correctly
@@ -309,17 +299,12 @@ mod tests {
             "pattern2".to_string(),
             "pattern3".to_string(),
         ];
-        
-        let result = new_string_matcher(
-            TextPatternModifier::Contains,
-            false,
-            false,
-            false,
-            patterns,
-        );
-        
+
+        let result =
+            new_string_matcher(TextPatternModifier::Contains, false, false, false, patterns);
+
         assert!(result.is_ok());
-        
+
         // Test single pattern optimization
         let single_pattern = vec!["single".to_string()];
         let result = new_string_matcher(
@@ -329,7 +314,7 @@ mod tests {
             false,
             single_pattern,
         );
-        
+
         assert!(result.is_ok());
     }
 }

@@ -2,9 +2,9 @@
 
 use sigma_rs::{
     error::SigmaError,
-    rule::{rule_from_yaml, Detection},
-    parser::Parser,
     lexer::Lexer,
+    parser::Parser,
+    rule::{rule_from_yaml, Detection},
 };
 use std::error::Error;
 
@@ -16,18 +16,18 @@ fn test_lexer_errors() {
         ("unexpected_char", "selection & filter"),
         ("invalid_operator", "selection <> filter"),
     ];
-    
+
     for (name, input) in test_cases {
         let (mut lexer, mut rx) = Lexer::new(input.to_string());
         let mut has_error = false;
-        
+
         while let Some(token) = rx.recv().await {
             if token.is_err() {
                 has_error = true;
                 break;
             }
         }
-        
+
         assert!(has_error, "Expected lexer error for: {}", name);
     }
 }
@@ -35,43 +35,58 @@ fn test_lexer_errors() {
 #[test]
 fn test_parser_errors() {
     let invalid_rules = vec![
-        ("missing_condition", r#"
+        (
+            "missing_condition",
+            r#"
 detection:
     selection:
         EventID: 1
-"#),
-        ("undefined_identifier", r#"
+"#,
+        ),
+        (
+            "undefined_identifier",
+            r#"
 detection:
     selection:
         EventID: 1
     condition: undefined_selection
-"#),
-        ("invalid_syntax", r#"
+"#,
+        ),
+        (
+            "invalid_syntax",
+            r#"
 detection:
     selection:
         EventID: 1
     condition: selection and and filter
-"#),
-        ("circular_reference", r#"
+"#,
+        ),
+        (
+            "circular_reference",
+            r#"
 detection:
     sel1:
         field: value
     sel2:
         field: sel1
     condition: sel2
-"#),
-        ("invalid_modifier", r#"
+"#,
+        ),
+        (
+            "invalid_modifier",
+            r#"
 detection:
     selection:
         field|invalid_mod: 'test'
     condition: selection
-"#),
+"#,
+        ),
     ];
-    
+
     for (name, yaml) in invalid_rules {
         let result = rule_from_yaml(yaml.as_bytes());
         assert!(result.is_err(), "Expected parse error for: {}", name);
-        
+
         if let Err(e) = result {
             tracing::error!("Error for {}: {}", name, e);
             // Verify error messages are informative
@@ -88,11 +103,10 @@ async fn test_detection_parsing_errors() {
         ("invalid_json", r#"{"condition": selection"}"#),
         ("wrong_type", r#"{"condition": 123}"#),
     ];
-    
+
     for (name, json) in test_cases {
-        let detection: Result<sigma_rs::rule::Detection, _> = 
-            serde_json::from_str(json);
-        
+        let detection: Result<sigma_rs::rule::Detection, _> = serde_json::from_str(json);
+
         if let Ok(det) = detection {
             let mut parser = Parser::new(det, false);
             let result = parser.run().await;
@@ -107,20 +121,26 @@ async fn test_detection_parsing_errors() {
 #[test]
 fn test_pattern_errors() {
     let test_cases = vec![
-        ("invalid_regex", r"[unclosed", sigma_rs::pattern::TextPatternModifier::Regex),
-        ("empty_pattern", "", sigma_rs::pattern::TextPatternModifier::Contains),
-        ("invalid_glob", "[invalid", sigma_rs::pattern::TextPatternModifier::None),
+        (
+            "invalid_regex",
+            r"[unclosed",
+            sigma_rs::pattern::TextPatternModifier::Regex,
+        ),
+        (
+            "empty_pattern",
+            "",
+            sigma_rs::pattern::TextPatternModifier::Contains,
+        ),
+        (
+            "invalid_glob",
+            "[invalid",
+            sigma_rs::pattern::TextPatternModifier::None,
+        ),
     ];
-    
+
     for (pattern, modifier) in test_cases {
-        let result = new_string_matcher(
-            modifier,
-            false,
-            false,
-            false,
-            vec![pattern.to_string()],
-        );
-        
+        let result = new_string_matcher(modifier, false, false, false, vec![pattern.to_string()]);
+
         if pattern == "invalid_regex" && modifier == sigma_rs::pattern::TextPatternModifier::Regex {
             assert!(result.is_err(), "Expected regex error for invalid pattern");
         }
@@ -133,14 +153,17 @@ fn test_yaml_parsing_errors() {
         ("invalid_yaml", "title: [unclosed"),
         ("wrong_structure", "not_a_rule: true"),
         ("missing_required", "title: Test"),
-        ("invalid_date", r#"
+        (
+            "invalid_date",
+            r#"
 title: Test
 date: not-a-date
 detection:
     condition: selection
-"#),
+"#,
+        ),
     ];
-    
+
     for (name, yaml) in invalid_yamls {
         let result = rule_from_yaml(yaml.as_bytes());
         assert!(result.is_err(), "Expected YAML error for: {}", name);
@@ -157,17 +180,19 @@ detection:
         field|regex: '[invalid'
     condition: selection and undefined
 "#;
-    
+
     match rule_from_yaml(complex_error_yaml.as_bytes()) {
         Err(e) => {
             let error_string = e.to_string();
             tracing::error!("Error chain: {}", error_string);
-            
+
             // Check that error message is informative
-            assert!(error_string.contains("invalid") || 
-                    error_string.contains("undefined") ||
-                    error_string.contains("regex"));
-            
+            assert!(
+                error_string.contains("invalid")
+                    || error_string.contains("undefined")
+                    || error_string.contains("regex")
+            );
+
             // Check error source chain
             let mut source = e.source();
             let mut depth = 0;
@@ -189,15 +214,18 @@ fn test_field_access_errors() {
         ("trailing_dot", "field.: value"),
         ("special_chars", "field@#$: value"),
     ];
-    
+
     for (name, field_spec) in test_cases {
-        let yaml = format!(r#"
+        let yaml = format!(
+            r#"
 detection:
     selection:
         {}
     condition: selection
-"#, field_spec);
-        
+"#,
+            field_spec
+        );
+
         let result = rule_from_yaml(yaml.as_bytes());
         assert!(result.is_err(), "Expected field error for: {}", name);
     }
@@ -210,15 +238,18 @@ fn test_numeric_parsing_errors() {
         ("overflow", "EventID: 99999999999999999999"),
         ("invalid_list", "EventID: [1, 'two', 3]"),
     ];
-    
+
     for (name, field_spec) in test_cases {
-        let yaml = format!(r#"
+        let yaml = format!(
+            r#"
 detection:
     selection:
         {}
     condition: selection
-"#, field_spec);
-        
+"#,
+            field_spec
+        );
+
         let result = rule_from_yaml(yaml.as_bytes());
         // Some of these might parse successfully depending on implementation
         tracing::error!("Numeric test {}: {:?}", name, result.is_err());
@@ -234,15 +265,18 @@ fn test_condition_errors() {
         ("wrong_identifier", "1selection"),
         ("reserved_word", "and or not"),
     ];
-    
+
     for (name, condition) in invalid_conditions {
-        let yaml = format!(r#"
+        let yaml = format!(
+            r#"
 detection:
     selection:
         field: value
     condition: {}
-"#, condition);
-        
+"#,
+            condition
+        );
+
         let result = rule_from_yaml(yaml.as_bytes());
         assert!(result.is_err(), "Expected condition error for: {}", name);
     }
@@ -255,7 +289,7 @@ fn test_wildcard_errors() {
         ("invalid_escape", "path: 'test\\q'"),
         ("unclosed_bracket", "path: '[a-z'"),
     ];
-    
+
     for (name, field_spec) in test_cases {
         tracing::error!("Testing wildcard error: {}", name);
         // Wildcard errors might be caught at different stages
@@ -276,7 +310,7 @@ detection:
         valid: 'field'
     condition: selection1 and undefined_sel and selection3
 "#;
-    
+
     match rule_from_yaml(multi_error_yaml.as_bytes()) {
         Err(e) => {
             tracing::error!("Multi-error: {}", e);
@@ -291,7 +325,7 @@ detection:
 #[cfg(test)]
 mod panic_safety {
     use super::*;
-    
+
     #[test]
     fn test_no_panics_on_malformed_input() {
         let malformed_inputs = vec![
@@ -303,11 +337,11 @@ mod panic_safety {
             "������",
             std::str::from_utf8(&[0xFF, 0xFE, 0xFD]).unwrap_or(""),
         ];
-        
+
         for input in malformed_inputs {
             // Should not panic, only return errors
             let _ = rule_from_yaml(input.as_bytes());
-            
+
             let (mut lexer, mut rx) = Lexer::new(input.to_string());
             tokio::runtime::Runtime::new().unwrap().block_on(async {
                 lexer.tokenize().await.ok();
@@ -317,7 +351,7 @@ mod panic_safety {
             });
         }
     }
-    
+
     #[test]
     fn test_large_input_handling() {
         // Test with very large input
@@ -325,7 +359,7 @@ mod panic_safety {
             "title: Large\ndetection:\n  condition: {}",
             "selection".repeat(10000)
         );
-        
+
         // Should handle gracefully without stack overflow
         let _ = rule_from_yaml(large_rule.as_bytes());
     }
@@ -334,7 +368,7 @@ mod panic_safety {
 #[cfg(test)]
 mod error_messages {
     use super::*;
-    
+
     #[test]
     fn test_helpful_error_messages() {
         let test_cases = vec![
@@ -342,10 +376,13 @@ mod error_messages {
             ("wrong_indent", "  field: value\n    condition: sel"),
             ("invalid_value", "field: [1, 2,]"),
         ];
-        
+
         for (name, input) in test_cases {
-            let yaml = format!("detection:\n  selection:\n    {}\n  condition: selection", input);
-            
+            let yaml = format!(
+                "detection:\n  selection:\n    {}\n  condition: selection",
+                input
+            );
+
             match rule_from_yaml(yaml.as_bytes()) {
                 Err(e) => {
                     let msg = e.to_string();
@@ -360,7 +397,7 @@ mod error_messages {
             }
         }
     }
-    
+
     #[test]
     fn test_line_number_reporting() {
         let yaml_with_error = r#"
@@ -370,7 +407,7 @@ detection:
         field: value
     condition: invalid syntax here
 "#;
-        
+
         match rule_from_yaml(yaml_with_error.as_bytes()) {
             Err(e) => {
                 let msg = e.to_string();

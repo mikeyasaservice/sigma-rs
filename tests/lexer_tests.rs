@@ -1,4 +1,4 @@
-use sigma_rs::lexer::{Lexer, token::Token};
+use sigma_rs::lexer::{token::Token, Lexer};
 use tokio::sync::mpsc;
 
 struct LexTestCase {
@@ -16,46 +16,46 @@ async fn test_lexer_cases() {
         LexTestCase {
             expr: "selection_1 and not filter_0",
             tokens: vec![
-                Token::Identifier, 
-                Token::KeywordAnd, 
-                Token::KeywordNot, 
-                Token::Identifier, 
+                Token::Identifier,
+                Token::KeywordAnd,
+                Token::KeywordNot,
+                Token::Identifier,
                 Token::LitEof,
             ],
         },
         LexTestCase {
             expr: "((selection_1 and not filter_0) OR (keyword_0 and not filter1)) or idontcare",
             tokens: vec![
-                Token::SepLpar, 
-                Token::SepLpar, 
-                Token::Identifier, 
-                Token::KeywordAnd, 
-                Token::KeywordNot, 
+                Token::SepLpar,
+                Token::SepLpar,
                 Token::Identifier,
-                Token::SepRpar, 
-                Token::KeywordOr, 
-                Token::SepLpar, 
-                Token::Identifier, 
-                Token::KeywordAnd, 
+                Token::KeywordAnd,
                 Token::KeywordNot,
-                Token::Identifier, 
-                Token::SepRpar, 
-                Token::SepRpar, 
-                Token::KeywordOr, 
-                Token::Identifier, 
+                Token::Identifier,
+                Token::SepRpar,
+                Token::KeywordOr,
+                Token::SepLpar,
+                Token::Identifier,
+                Token::KeywordAnd,
+                Token::KeywordNot,
+                Token::Identifier,
+                Token::SepRpar,
+                Token::SepRpar,
+                Token::KeywordOr,
+                Token::Identifier,
                 Token::LitEof,
             ],
         },
         LexTestCase {
             expr: "all of selection* and not 1 of filter* | count() > 10",
             tokens: vec![
-                Token::StmtAllOf, 
-                Token::IdentifierWithWildcard, 
-                Token::KeywordAnd, 
-                Token::KeywordNot, 
+                Token::StmtAllOf,
+                Token::IdentifierWithWildcard,
+                Token::KeywordAnd,
+                Token::KeywordNot,
                 Token::StmtOneOf,
-                Token::IdentifierWithWildcard, 
-                Token::SepPipe, 
+                Token::IdentifierWithWildcard,
+                Token::SepPipe,
                 Token::Unsupported,
                 Token::LitEof,
             ],
@@ -64,27 +64,31 @@ async fn test_lexer_cases() {
 
     for (index, case) in test_cases.iter().enumerate() {
         let (lexer, mut rx) = Lexer::new(case.expr.to_string());
-        
+
         // Spawn the lexer to run asynchronously
         tokio::spawn(async move {
             lexer.scan().await.unwrap();
         });
-        
+
         // Collect all tokens
         let mut tokens = Vec::new();
         while let Some(item) = rx.recv().await {
             tokens.push(item.token);
         }
-        
+
         // Compare with expected tokens
         if tokens.len() != case.tokens.len() {
             tracing::error!("Test case {} failed: expression '{}'", index, case.expr);
             tracing::error!("Expected tokens: {:?}", case.tokens);
             tracing::error!("Actual tokens: {:?}", tokens);
-            tracing::error!("Expected {} tokens, got {}", case.tokens.len(), tokens.len());
+            tracing::error!(
+                "Expected {} tokens, got {}",
+                case.tokens.len(),
+                tokens.len()
+            );
             panic!("Token count mismatch");
         }
-        
+
         for (i, (actual, expected)) in tokens.iter().zip(case.tokens.iter()).enumerate() {
             assert_eq!(
                 actual, expected,
@@ -98,15 +102,15 @@ async fn test_lexer_cases() {
 #[tokio::test]
 async fn test_simple_identifier() {
     let (lexer, mut rx) = Lexer::new("selection".to_string());
-    
+
     tokio::spawn(async move {
         lexer.scan().await.unwrap();
     });
-    
+
     let item = rx.recv().await.unwrap();
     assert_eq!(item.token, Token::Identifier);
     assert_eq!(item.value, "selection");
-    
+
     let item = rx.recv().await.unwrap();
     assert_eq!(item.token, Token::LitEof);
 }
@@ -121,14 +125,14 @@ async fn test_keywords() {
         ("not", Token::KeywordNot),
         ("NOT", Token::KeywordNot),
     ];
-    
+
     for (input, expected) in cases {
         let (lexer, mut rx) = Lexer::new(input.to_string());
-        
+
         tokio::spawn(async move {
             lexer.scan().await.unwrap();
         });
-        
+
         let item = rx.recv().await.unwrap();
         assert_eq!(item.token, expected, "Failed to lex keyword: {}", input);
     }
@@ -136,18 +140,15 @@ async fn test_keywords() {
 
 #[tokio::test]
 async fn test_statements() {
-    let cases = vec![
-        ("1 of", Token::StmtOneOf),
-        ("all of", Token::StmtAllOf),
-    ];
-    
+    let cases = vec![("1 of", Token::StmtOneOf), ("all of", Token::StmtAllOf)];
+
     for (input, expected) in cases {
         let (lexer, mut rx) = Lexer::new(input.to_string());
-        
+
         tokio::spawn(async move {
             lexer.scan().await.unwrap();
         });
-        
+
         let item = rx.recv().await.unwrap();
         assert_eq!(item.token, expected, "Failed to lex statement: {}", input);
     }
@@ -156,11 +157,11 @@ async fn test_statements() {
 #[tokio::test]
 async fn test_wildcard_identifiers() {
     let (lexer, mut rx) = Lexer::new("selection*".to_string());
-    
+
     tokio::spawn(async move {
         lexer.scan().await.unwrap();
     });
-    
+
     let item = rx.recv().await.unwrap();
     assert_eq!(item.token, Token::IdentifierWithWildcard);
     assert_eq!(item.value, "selection*");
@@ -169,21 +170,21 @@ async fn test_wildcard_identifiers() {
 #[tokio::test]
 async fn test_parentheses() {
     let (lexer, mut rx) = Lexer::new("(selection)".to_string());
-    
+
     tokio::spawn(async move {
         lexer.scan().await.unwrap();
     });
-    
+
     let item = rx.recv().await.unwrap();
     assert_eq!(item.token, Token::SepLpar);
-    
+
     let item = rx.recv().await.unwrap();
     assert_eq!(item.token, Token::Identifier);
     assert_eq!(item.value, "selection");
-    
+
     let item = rx.recv().await.unwrap();
     assert_eq!(item.token, Token::SepRpar);
-    
+
     let item = rx.recv().await.unwrap();
     assert_eq!(item.token, Token::LitEof);
 }
@@ -191,18 +192,18 @@ async fn test_parentheses() {
 #[tokio::test]
 async fn test_pipe_aggregation() {
     let (lexer, mut rx) = Lexer::new("selection | count() > 10".to_string());
-    
+
     tokio::spawn(async move {
         lexer.scan().await.unwrap();
     });
-    
+
     let item = rx.recv().await.unwrap();
     assert_eq!(item.token, Token::Identifier);
     assert_eq!(item.value, "selection");
-    
+
     let item = rx.recv().await.unwrap();
     assert_eq!(item.token, Token::SepPipe);
-    
+
     // The rest should be unsupported for now
     let item = rx.recv().await.unwrap();
     assert_eq!(item.token, Token::Unsupported);

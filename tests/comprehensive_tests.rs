@@ -1,12 +1,11 @@
+use anyhow::Result;
+use serde_json::json;
+use sigma_rs::rule::Rule;
 /// Comprehensive test suite for Sigma rule engine
 /// This module implements the testing strategy outlined in TESTING_STRATEGY.md
-
 use sigma_rs::{DynamicEvent, Selector};
-use sigma_rs::rule::Rule;
 use std::fs;
 use std::path::PathBuf;
-use serde_json::json;
-use anyhow::Result;
 
 /// Test fixture loader for Sigma rules
 struct TestFixtures {
@@ -24,7 +23,7 @@ impl TestFixtures {
 
     fn load_sigma_rules(&self) -> Result<Vec<Rule>> {
         let mut rules = Vec::new();
-        
+
         for entry in fs::read_dir(&self.rules_dir)? {
             let path = entry?.path();
             if path.extension().and_then(|s| s.to_str()) == Some("yml") {
@@ -35,13 +34,13 @@ impl TestFixtures {
                 }
             }
         }
-        
+
         Ok(rules)
     }
 
     fn load_test_events(&self) -> Result<Vec<serde_json::Value>> {
         let mut events = Vec::new();
-        
+
         for entry in fs::read_dir(&self.events_dir)? {
             let path = entry?.path();
             if path.extension().and_then(|s| s.to_str()) == Some("json") {
@@ -50,7 +49,7 @@ impl TestFixtures {
                 events.push(event);
             }
         }
-        
+
         Ok(events)
     }
 }
@@ -77,10 +76,12 @@ mod unit_tests {
                 "endswith" => value.ends_with(pattern),
                 _ => false,
             };
-            
-            assert_eq!(result, expected, 
-                "Pattern {} with modifier {} on value {} should be {}", 
-                pattern, modifier, value, expected);
+
+            assert_eq!(
+                result, expected,
+                "Pattern {} with modifier {} on value {} should be {}",
+                pattern, modifier, value, expected
+            );
         }
     }
 
@@ -115,7 +116,10 @@ mod unit_tests {
                 }
             });
 
-        assert!(matches, "Image should match at least one pattern in the array");
+        assert!(
+            matches,
+            "Image should match at least one pattern in the array"
+        );
     }
 }
 
@@ -144,12 +148,13 @@ detection:
 
         // Parse rule
         let rule = sigma_rs::rule::rule_from_yaml(rule_yaml.as_bytes()).unwrap();
-        
+
         // Create event
         let dynamic_event = DynamicEvent::new(event);
-        
+
         // Build and evaluate tree
-        let rule_handle = sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("test.yml"));
+        let rule_handle =
+            sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("test.yml"));
         let tree = sigma_rs::tree::build_tree(rule_handle).await.unwrap();
         let (matches, _applicable) = tree.match_event(&dynamic_event).await;
         assert!(matches, "Event should match the rule");
@@ -208,7 +213,8 @@ detection:
 
         for (event, expected) in test_cases {
             let dynamic_event = DynamicEvent::new(event);
-            let rule_handle = sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("test.yml"));
+            let rule_handle =
+                sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("test.yml"));
             let tree = sigma_rs::tree::build_tree(rule_handle).await.unwrap();
             let (matches, _applicable) = tree.match_event(&dynamic_event).await;
             assert_eq!(matches, expected, "Complex condition evaluation failed");
@@ -251,12 +257,16 @@ detection:
 
         // Run Rust implementation
         let rule = sigma_rs::rule::rule_from_yaml(test_rule.as_bytes()).unwrap();
-        let rule_handle = sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("test.yml"));
+        let rule_handle =
+            sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("test.yml"));
         let tree = sigma_rs::tree::build_tree(rule_handle).await.unwrap();
         let dynamic_event = DynamicEvent::new(test_event);
         let (rust_result, _applicable) = tree.match_event(&dynamic_event).await;
-        
-        assert_eq!(rust_result, go_result, "Results should match between Go and Rust");
+
+        assert_eq!(
+            rust_result, go_result,
+            "Results should match between Go and Rust"
+        );
     }
 }
 
@@ -267,14 +277,14 @@ mod real_world_tests {
     #[test]
     fn test_official_sigma_rules() {
         let fixtures = TestFixtures::new();
-        
+
         // Create test fixtures directory if it doesn't exist
         fs::create_dir_all(&fixtures.rules_dir).ok();
         fs::create_dir_all(&fixtures.events_dir).ok();
-        
+
         // Note: In a real scenario, these would be populated with actual Sigma rules
         // and event logs from the official repository
-        
+
         match fixtures.load_sigma_rules() {
             Ok(rules) => {
                 tracing::error!("Loaded {} test rules", rules.len());
@@ -321,9 +331,10 @@ detection:
 
         // Parse rule and build tree
         let rule = sigma_rs::rule::rule_from_yaml(rule_yaml.as_bytes()).unwrap();
-        let rule_handle = sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("test.yml"));
+        let rule_handle =
+            sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("test.yml"));
         let tree = sigma_rs::tree::build_tree(rule_handle).await.unwrap();
-        
+
         // Test matching event
         let matching_event = json!({
             "EventID": 4624,
@@ -332,7 +343,7 @@ detection:
         let dynamic_event = DynamicEvent::new(matching_event);
         let (matches, _applicable) = tree.match_event(&dynamic_event).await;
         assert!(matches, "Network logon event should match");
-        
+
         // Test non-matching event
         let non_matching_event = json!({
             "EventID": 4624,
@@ -340,7 +351,10 @@ detection:
         });
         let dynamic_event = DynamicEvent::new(non_matching_event);
         let (matches, _applicable) = tree.match_event(&dynamic_event).await;
-        assert!(!matches, "Interactive logon should not match network logon rule");
+        assert!(
+            !matches,
+            "Interactive logon should not match network logon rule"
+        );
     }
 }
 
@@ -427,14 +441,14 @@ detection:
 
         let iterations = 1000;
         let start = Instant::now();
-        
+
         for _ in 0..iterations {
             let _ = sigma_rs::rule::rule_from_yaml(rule_yaml.as_bytes());
         }
-        
+
         let duration = start.elapsed();
         let avg_time = duration / iterations;
-        
+
         tracing::error!("Average rule parsing time: {:?}", avg_time);
         assert!(avg_time.as_micros() < 1000, "Rule parsing should be fast");
     }
@@ -451,14 +465,14 @@ detection:
 
         let iterations = 10000;
         let start = Instant::now();
-        
+
         for _ in 0..iterations {
             let _ = DynamicEvent::new(event.clone());
         }
-        
+
         let duration = start.elapsed();
         let avg_time = duration / iterations;
-        
+
         tracing::error!("Average event creation time: {:?}", avg_time);
         assert!(avg_time.as_micros() < 100, "Event creation should be fast");
     }
@@ -475,7 +489,7 @@ title: Empty Rule
 detection:
   condition: selection
 "#;
-        
+
         let result = sigma_rs::rule::rule_from_yaml(rule_yaml.as_bytes());
         assert!(result.is_err(), "Should fail on missing selection");
     }
@@ -489,7 +503,7 @@ detection:
     EventID: [1, 2, 3
   condition: selection
 "#;
-        
+
         let result = sigma_rs::rule::rule_from_yaml(malformed_yaml.as_bytes());
         assert!(result.is_err(), "Should fail on malformed YAML");
     }
@@ -524,7 +538,7 @@ detection:
   b: selection_a
   condition: a
 "#;
-        
+
         // Should handle circular references gracefully
         let result = sigma_rs::rule::rule_from_yaml(rule_yaml.as_bytes());
         // The actual behavior depends on implementation
@@ -534,19 +548,19 @@ detection:
     fn test_extremely_large_rule() {
         let mut selections = String::new();
         let mut condition_parts = Vec::new();
-        
+
         // Create a rule with 100 selections
         for i in 0..100 {
             selections.push_str(&format!("  selection{}:\n    EventID: {}\n", i, i));
             condition_parts.push(format!("selection{}", i));
         }
-        
+
         let rule_yaml = format!(
             "title: Large Rule\nid: large-rule-test\ndetection:\n{}\n  condition: {}",
             selections,
             condition_parts.join(" or ")
         );
-        
+
         let result = sigma_rs::rule::rule_from_yaml(rule_yaml.as_bytes());
         assert!(result.is_ok(), "Should handle large rules");
     }

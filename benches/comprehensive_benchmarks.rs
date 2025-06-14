@@ -1,10 +1,9 @@
 /// Comprehensive benchmarks for Sigma rule engine
 /// Measures performance of various components and compares with Go implementation
-
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
-use std::hint::black_box;
-use sigma_rs::{DynamicEvent, Selector};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use serde_json::{json, Value};
+use sigma_rs::{DynamicEvent, Selector};
+use std::hint::black_box;
 
 /// Load test rules for benchmarking
 fn load_benchmark_rules() -> Vec<String> {
@@ -18,8 +17,8 @@ detection:
     EventID: 1
     Image|endswith: '\cmd.exe'
   condition: selection
-"#.to_string(),
-        
+"#
+        .to_string(),
         // Complex rule with multiple conditions
         r#"
 title: Complex Detection
@@ -44,8 +43,8 @@ detection:
   filter:
     User: 'SYSTEM'
   condition: (process_creation or network_activity) and suspicious_cmdline and not filter
-"#.to_string(),
-        
+"#
+        .to_string(),
         // Rule with many selections
         r#"
 title: Many Selections
@@ -70,8 +69,8 @@ detection:
   selection8:
     ProcessId|gte: 1000
   condition: all of selection*
-"#.to_string(),
-        
+"#
+        .to_string(),
         // Rule with regex patterns
         r#"
 title: Regex Detection
@@ -81,14 +80,15 @@ detection:
     CommandLine|re: '(wget|curl).*https?://.*\.(exe|dll|bat|ps1)'
     DestinationHostname|re: '^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
   condition: selection
-"#.to_string(),
+"#
+        .to_string(),
     ]
 }
 
 /// Generate test events for benchmarking
 fn generate_test_events(count: usize) -> Vec<Value> {
     let mut events = Vec::with_capacity(count);
-    
+
     for i in 0..count {
         let event = match i % 4 {
             0 => json!({
@@ -121,18 +121,18 @@ fn generate_test_events(count: usize) -> Vec<Value> {
                 "StartType": "auto start"
             }),
         };
-        
+
         events.push(event);
     }
-    
+
     events
 }
 
 fn benchmark_rule_parsing(c: &mut Criterion) {
     let rules = load_benchmark_rules();
-    
+
     let mut group = c.benchmark_group("rule_parsing");
-    
+
     for (i, rule) in rules.iter().enumerate() {
         group.bench_with_input(BenchmarkId::new("parse", i), rule, |b, rule| {
             b.iter(|| {
@@ -140,13 +140,13 @@ fn benchmark_rule_parsing(c: &mut Criterion) {
             });
         });
     }
-    
+
     group.finish();
 }
 
 fn benchmark_event_creation(c: &mut Criterion) {
     let events = generate_test_events(100);
-    
+
     c.bench_function("event_creation", |b| {
         b.iter(|| {
             for event in &events {
@@ -173,32 +173,32 @@ fn benchmark_field_selection(c: &mut Criterion) {
             "Sid": "S-1-5-21-123456"
         }
     });
-    
+
     let dynamic_event = DynamicEvent::new(event);
-    
+
     let mut group = c.benchmark_group("field_selection");
-    
+
     // Benchmark direct field access
     group.bench_function("direct", |b| {
         b.iter(|| {
             black_box(dynamic_event.select("EventID"));
         });
     });
-    
+
     // Benchmark nested field access
     group.bench_function("nested", |b| {
         b.iter(|| {
             black_box(dynamic_event.select("Process.Image"));
         });
     });
-    
+
     // Benchmark deeply nested field access
     group.bench_function("deeply_nested", |b| {
         b.iter(|| {
             black_box(dynamic_event.select("Process.Parent.ProcessId"));
         });
     });
-    
+
     group.finish();
 }
 
@@ -209,9 +209,9 @@ fn benchmark_pattern_matching(c: &mut Criterion) {
         "powershell.exe -EncodedCommand SGVsbG8gV29ybGQ=",
         "https://malicious-site.com/download/payload.exe",
     ];
-    
+
     let mut group = c.benchmark_group("pattern_matching");
-    
+
     // Benchmark contains
     group.bench_function("contains", |b| {
         b.iter(|| {
@@ -220,7 +220,7 @@ fn benchmark_pattern_matching(c: &mut Criterion) {
             }
         });
     });
-    
+
     // Benchmark startswith
     group.bench_function("startswith", |b| {
         b.iter(|| {
@@ -229,7 +229,7 @@ fn benchmark_pattern_matching(c: &mut Criterion) {
             }
         });
     });
-    
+
     // Benchmark endswith
     group.bench_function("endswith", |b| {
         b.iter(|| {
@@ -238,7 +238,7 @@ fn benchmark_pattern_matching(c: &mut Criterion) {
             }
         });
     });
-    
+
     // Benchmark regex
     let re = regex::Regex::new(r"https?://[^\s]+\.(exe|dll|bat)").unwrap();
     group.bench_function("regex", |b| {
@@ -248,27 +248,27 @@ fn benchmark_pattern_matching(c: &mut Criterion) {
             }
         });
     });
-    
+
     group.finish();
 }
 
 fn benchmark_rule_evaluation(c: &mut Criterion) {
     let _rules = load_benchmark_rules();
     let _events = generate_test_events(1000);
-    
+
     let group = c.benchmark_group("rule_evaluation");
-    
+
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let rules = load_benchmark_rules();
     let events = generate_test_events(1000);
-    
+
     for (i, rule_str) in rules.iter().enumerate() {
         let rule = sigma_rs::rule::rule_from_yaml(rule_str.as_bytes()).unwrap();
-        let rule_handle = sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("bench.yml"));
-        let tree = runtime.block_on(async {
-            sigma_rs::tree::build_tree(rule_handle).await.unwrap()
-        });
-        
+        let rule_handle =
+            sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("bench.yml"));
+        let tree =
+            runtime.block_on(async { sigma_rs::tree::build_tree(rule_handle).await.unwrap() });
+
         group.bench_with_input(BenchmarkId::new("evaluate", i), &events, |b, events| {
             b.iter(|| {
                 for event in events {
@@ -280,19 +280,19 @@ fn benchmark_rule_evaluation(c: &mut Criterion) {
             });
         });
     }
-    
+
     group.finish();
 }
 
 fn benchmark_ruleset_evaluation(c: &mut Criterion) {
     let _rules = load_benchmark_rules();
     let _events = generate_test_events(100);
-    
+
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut ruleset = sigma_rs::ruleset::RuleSet::new();
     let rules = load_benchmark_rules();
     let events = generate_test_events(100);
-    
+
     // Load rules into ruleset
     runtime.block_on(async {
         for rule_str in &rules {
@@ -300,7 +300,7 @@ fn benchmark_ruleset_evaluation(c: &mut Criterion) {
             ruleset.add_rule(rule).await.unwrap();
         }
     });
-    
+
     c.bench_function("ruleset_evaluation", |b| {
         b.iter(|| {
             runtime.block_on(async {
@@ -315,7 +315,7 @@ fn benchmark_ruleset_evaluation(c: &mut Criterion) {
 
 fn benchmark_memory_usage(c: &mut Criterion) {
     let mut group = c.benchmark_group("memory_usage");
-    
+
     // Benchmark memory usage for large events
     group.bench_function("large_event", |b| {
         b.iter(|| {
@@ -326,7 +326,7 @@ fn benchmark_memory_usage(c: &mut Criterion) {
             black_box(DynamicEvent::new(event));
         });
     });
-    
+
     // Benchmark memory usage for deeply nested events
     group.bench_function("deeply_nested_event", |b| {
         b.iter(|| {
@@ -337,21 +337,21 @@ fn benchmark_memory_usage(c: &mut Criterion) {
             black_box(DynamicEvent::new(event));
         });
     });
-    
+
     group.finish();
 }
 
 fn benchmark_concurrent_evaluation(c: &mut Criterion) {
     use std::sync::Arc;
     use std::thread;
-    
+
     let events = Arc::new(generate_test_events(1000));
     let num_threads = 4;
-    
+
     c.bench_function("concurrent_evaluation", |b| {
         b.iter(|| {
             let mut handles = vec![];
-            
+
             for _ in 0..num_threads {
                 let events_clone = Arc::clone(&events);
                 let handle = thread::spawn(move || {
@@ -361,7 +361,7 @@ fn benchmark_concurrent_evaluation(c: &mut Criterion) {
                 });
                 handles.push(handle);
             }
-            
+
             for handle in handles {
                 handle.join().unwrap();
             }
@@ -371,14 +371,14 @@ fn benchmark_concurrent_evaluation(c: &mut Criterion) {
 
 fn benchmark_edge_cases(c: &mut Criterion) {
     let mut group = c.benchmark_group("edge_cases");
-    
+
     // Empty event
     group.bench_function("empty_event", |b| {
         b.iter(|| {
             black_box(DynamicEvent::new(json!({})));
         });
     });
-    
+
     // Event with many fields
     group.bench_function("many_fields", |b| {
         b.iter(|| {
@@ -389,7 +389,7 @@ fn benchmark_edge_cases(c: &mut Criterion) {
             black_box(DynamicEvent::new(event));
         });
     });
-    
+
     // Event with Unicode
     group.bench_function("unicode_event", |b| {
         b.iter(|| {
@@ -401,7 +401,7 @@ fn benchmark_edge_cases(c: &mut Criterion) {
             black_box(DynamicEvent::new(event));
         });
     });
-    
+
     group.finish();
 }
 

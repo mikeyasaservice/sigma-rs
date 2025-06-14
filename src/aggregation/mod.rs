@@ -1,15 +1,15 @@
 use chrono::{DateTime, Utc};
 
-/// Sliding window implementation for time-based aggregation
-pub mod sliding_window;
-/// Aggregation evaluation engine
-pub mod evaluator;
 /// Configuration types for aggregation
 pub mod config;
+/// Aggregation evaluation engine
+pub mod evaluator;
+/// Sliding window implementation for time-based aggregation
+pub mod sliding_window;
 
-pub use sliding_window::SlidingWindow;
-pub use evaluator::AggregationEvaluator;
 pub use config::{AggregationConfig, WindowConfig};
+pub use evaluator::AggregationEvaluator;
+pub use sliding_window::SlidingWindow;
 
 /// Aggregation functions supported by Sigma
 #[derive(Debug, Clone, PartialEq)]

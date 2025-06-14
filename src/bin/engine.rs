@@ -1,6 +1,6 @@
 //! Main Sigma engine binary
 
-use sigma_rs::{SigmaEngineBuilder, KafkaConfig};
+use sigma_rs::{KafkaConfig, SigmaEngineBuilder};
 use std::collections::HashMap;
 use tracing::info;
 
@@ -9,17 +9,17 @@ async fn main() -> anyhow::Result<()> {
     // Initialize tracing
     sigma_rs::init_tracing();
     info!("Starting Sigma Engine");
-    
+
     // Build configuration from environment or command line
     let mut builder = SigmaEngineBuilder::new();
-    
+
     // Add rule directories from environment
     if let Ok(rule_dirs) = std::env::var("SIGMA_RULE_DIRS") {
         for dir in rule_dirs.split(':') {
             builder = builder.add_rule_dir(dir);
         }
     }
-    
+
     // Configure Kafka if environment variables are set
     if let Ok(brokers) = std::env::var("KAFKA_BROKERS") {
         let kafka_config = KafkaConfig {
@@ -40,10 +40,10 @@ async fn main() -> anyhow::Result<()> {
         };
         builder = builder.with_kafka(kafka_config);
     }
-    
+
     // Build and run the service
     let service = builder.build().await?;
     service.run().await?;
-    
+
     Ok(())
 }

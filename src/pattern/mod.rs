@@ -1,6 +1,5 @@
 //! Pattern matching implementations for Sigma rules
 
-
 pub mod coercion;
 pub mod escape;
 pub mod factory;
@@ -17,7 +16,7 @@ mod test_escape;
 pub use coercion::*;
 pub use escape::{escape_sigma_for_glob, escape_sigma_for_glob_cow};
 pub use factory::*;
-pub use intern::{intern_pattern, global_interner_stats, InternerStats, StringInternerConfig};
+pub use intern::{global_interner_stats, intern_pattern, InternerStats, StringInternerConfig};
 pub use num_matcher::*;
 pub use security::*;
 pub use string_matcher::*;

@@ -1,5 +1,8 @@
-use crate::lexer::{Lexer, token::{Token, check_keyword}};
 use crate::lexer::error::LexError;
+use crate::lexer::{
+    token::{check_keyword, Token},
+    Lexer,
+};
 
 /// States in the lexer state machine
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -43,7 +46,8 @@ impl Lexer {
 
     /// Lex "1 of" statement
     pub async fn lex_one_of(&mut self) -> Result<Option<LexState>, LexError> {
-        self.position = self.position
+        self.position = self
+            .position
             .checked_add("1 of".len())
             .ok_or(LexError::PositionOverflow)?;
         self.emit(Token::StmtOneOf).await?;
@@ -52,7 +56,8 @@ impl Lexer {
 
     /// Lex "all of" statement
     pub async fn lex_all_of(&mut self) -> Result<Option<LexState>, LexError> {
-        self.position = self.position
+        self.position = self
+            .position
             .checked_add("all of".len())
             .ok_or(LexError::PositionOverflow)?;
         self.emit(Token::StmtAllOf).await?;
@@ -160,15 +165,13 @@ mod tests {
     #[tokio::test]
     async fn test_lex_one_of() {
         let (mut lexer, mut rx) = create_test_lexer("1 of");
-        
+
         // Manually test the one_of state
-        let next_state = lexer.lex_one_of().await
-            .expect("lex_one_of should succeed");
+        let next_state = lexer.lex_one_of().await.expect("lex_one_of should succeed");
         assert_eq!(next_state, Some(LexState::Condition));
-        
+
         // Check the emitted token
-        let item = rx.recv().await
-            .expect("Should receive StmtOneOf token");
+        let item = rx.recv().await.expect("Should receive StmtOneOf token");
         assert_eq!(item.token, Token::StmtOneOf);
         assert_eq!(item.value, "1 of");
     }
@@ -176,13 +179,11 @@ mod tests {
     #[tokio::test]
     async fn test_lex_all_of() {
         let (mut lexer, mut rx) = create_test_lexer("all of");
-        
-        let next_state = lexer.lex_all_of().await
-            .expect("lex_all_of should succeed");
+
+        let next_state = lexer.lex_all_of().await.expect("lex_all_of should succeed");
         assert_eq!(next_state, Some(LexState::Condition));
-        
-        let item = rx.recv().await
-            .expect("Should receive StmtAllOf token");
+
+        let item = rx.recv().await.expect("Should receive StmtAllOf token");
         assert_eq!(item.token, Token::StmtAllOf);
         assert_eq!(item.value, "all of");
     }

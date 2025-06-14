@@ -1,7 +1,7 @@
+use crate::event::{Event, Value};
+use crate::pattern::coercion::{coerce_for_numeric_match, coerce_for_string_match};
 use async_trait::async_trait;
 use std::fmt::Debug;
-use crate::pattern::coercion::{coerce_for_string_match, coerce_for_numeric_match};
-use crate::event::{Event, Value};
 use tracing::warn;
 
 /// AST node implementations
@@ -20,15 +20,13 @@ fn value_to_json(value: Value) -> serde_json::Value {
                 warn!("Non-finite float value encountered: {:?}", f);
                 serde_json::Value::Null
             }
-        },
+        }
         Value::Boolean(b) => serde_json::Value::Bool(b),
-        Value::Array(arr) => serde_json::Value::Array(
-            arr.into_iter().map(value_to_json).collect()
-        ),
+        Value::Array(arr) => serde_json::Value::Array(arr.into_iter().map(value_to_json).collect()),
         Value::Object(obj) => serde_json::Value::Object(
             obj.into_iter()
                 .map(|(k, v)| (k, value_to_json(v)))
-                .collect()
+                .collect(),
         ),
         Value::Null => serde_json::Value::Null,
     }
@@ -46,7 +44,10 @@ pub struct MatchResult {
 impl MatchResult {
     /// Create a new match result
     pub fn new(matched: bool, applicable: bool) -> Self {
-        Self { matched, applicable }
+        Self {
+            matched,
+            applicable,
+        }
     }
 
     /// Create a successful match result
@@ -79,12 +80,12 @@ impl MatchResult {
 pub trait Branch: Debug + Send + Sync {
     /// Match the node against an event
     async fn matches(&self, event: &dyn Event) -> MatchResult;
-    
+
     /// Get a human-readable description of the node
     fn describe(&self) -> String;
 }
 
-use crate::pattern::{StringMatcher, NumMatcher, TextPatternModifier, new_string_matcher};
+use crate::pattern::{new_string_matcher, NumMatcher, StringMatcher, TextPatternModifier};
 use std::sync::Arc;
 
 /// Field rule for matching event fields
@@ -130,9 +131,7 @@ impl serde::Serialize for FieldPattern {
             FieldPattern::Numeric { pattern_desc, .. } => {
                 serializer.serialize_str(pattern_desc.as_ref())
             }
-            FieldPattern::Keywords(keywords) => {
-                keywords.serialize(serializer)
-            }
+            FieldPattern::Keywords(keywords) => keywords.serialize(serializer),
         }
     }
 }
@@ -141,8 +140,22 @@ impl serde::Serialize for FieldPattern {
 impl PartialEq for FieldPattern {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (FieldPattern::String { pattern_desc: p1, .. }, FieldPattern::String { pattern_desc: p2, .. }) => p1 == p2,
-            (FieldPattern::Numeric { pattern_desc: p1, .. }, FieldPattern::Numeric { pattern_desc: p2, .. }) => p1 == p2,
+            (
+                FieldPattern::String {
+                    pattern_desc: p1, ..
+                },
+                FieldPattern::String {
+                    pattern_desc: p2, ..
+                },
+            ) => p1 == p2,
+            (
+                FieldPattern::Numeric {
+                    pattern_desc: p1, ..
+                },
+                FieldPattern::Numeric {
+                    pattern_desc: p2, ..
+                },
+            ) => p1 == p2,
             (FieldPattern::Keywords(k1), FieldPattern::Keywords(k2)) => k1 == k2,
             _ => false,
         }
@@ -154,17 +167,21 @@ impl FieldRule {
     pub fn new(field: Arc<str>, pattern: FieldPattern) -> Self {
         Self { field, pattern }
     }
-    
+
     /// Create a string pattern
-    pub fn string_pattern(field: Arc<str>, pattern: String, modifier: TextPatternModifier) -> Result<Self, String> {
+    pub fn string_pattern(
+        field: Arc<str>,
+        pattern: String,
+        modifier: TextPatternModifier,
+    ) -> Result<Self, String> {
         let matcher = new_string_matcher(
             modifier,
-            false,  // lowercase
-            false,  // all
-            false,  // no_collapse_ws
+            false, // lowercase
+            false, // all
+            false, // no_collapse_ws
             vec![pattern.clone()],
         )?;
-        
+
         Ok(Self {
             field,
             pattern: FieldPattern::String {
@@ -173,17 +190,17 @@ impl FieldRule {
             },
         })
     }
-    
+
     /// Create a glob pattern
     pub fn glob_pattern(field: Arc<str>, pattern: String) -> Result<Self, String> {
         let matcher = new_string_matcher(
             TextPatternModifier::None,
-            false,  // lowercase
-            false,  // all
-            false,  // no_collapse_ws
+            false, // lowercase
+            false, // all
+            false, // no_collapse_ws
             vec![pattern.clone()],
         )?;
-        
+
         Ok(Self {
             field,
             pattern: FieldPattern::String {
@@ -196,13 +213,16 @@ impl FieldRule {
     /// Check if this field rule matches the given event
     pub async fn matches(&self, event: &dyn Event) -> MatchResult {
         match &self.pattern {
-            FieldPattern::String { matcher, pattern_desc: _ } => {
+            FieldPattern::String {
+                matcher,
+                pattern_desc: _,
+            } => {
                 let (value_opt, found) = event.select(self.field.as_ref());
                 let value = match value_opt {
                     Some(v) if found => v,
                     _ => return MatchResult::not_applicable(),
                 };
-                
+
                 // Convert our Value to serde_json::Value for coercion
                 let json_value = value_to_json(value);
                 let value_str = coerce_for_string_match(&json_value);
@@ -214,14 +234,14 @@ impl FieldRule {
                     Some(v) if found => v,
                     _ => return MatchResult::not_applicable(),
                 };
-                
+
                 // Convert our Value to serde_json::Value for coercion
                 let json_value = value_to_json(value);
                 let num_value = match coerce_for_numeric_match(&json_value) {
                     Some(n) => n,
                     None => return MatchResult::not_matched(),
                 };
-                
+
                 MatchResult::new(matcher.num_match(num_value), true)
             }
             FieldPattern::Keywords(keywords) => {
@@ -229,9 +249,7 @@ impl FieldRule {
                 if !applicable {
                     return MatchResult::not_applicable();
                 }
-                let matched = keywords
-                    .iter()
-                    .all(|k| event_keywords.contains(k));
+                let matched = keywords.iter().all(|k| event_keywords.contains(k));
                 MatchResult::new(matched, true)
             }
         }
@@ -271,7 +289,10 @@ mod tests {
     fn test_value_to_json_finite_float() {
         let value = Value::Float(42.5);
         let json = value_to_json(value);
-        assert_eq!(json, serde_json::Value::Number(serde_json::Number::from_f64(42.5).unwrap()));
+        assert_eq!(
+            json,
+            serde_json::Value::Number(serde_json::Number::from_f64(42.5).unwrap())
+        );
     }
 
     #[test]

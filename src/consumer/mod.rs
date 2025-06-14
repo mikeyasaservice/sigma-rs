@@ -1,5 +1,5 @@
 //! Redpanda/Kafka consumer implementation for the Sigma engine
-//! 
+//!
 //! This module provides a production-ready consumer implementation with:
 //! - Robust error handling and recovery
 //! - Manual offset management
@@ -46,33 +46,35 @@
 //! # }
 //! ```
 
+pub mod backpressure;
 pub mod config;
 pub mod consumer;
+pub mod dlq;
 pub mod error;
-pub mod processor;
 pub mod metrics;
 pub mod offset_manager;
-pub mod backpressure;
+pub mod processor;
 pub mod retry;
-pub mod dlq;
 pub mod shutdown;
 
+pub use backpressure::{
+    AdaptiveBackpressureConfig, AdaptiveBackpressureController, BackpressureController,
+};
 pub use config::{ConsumerConfig, ConsumerConfigBuilder};
 pub use consumer::RedpandaConsumer;
+pub use dlq::{DlqConfig, DlqProducer};
 pub use error::{ConsumerError, ConsumerResult};
-pub use processor::MessageProcessor;
 pub use metrics::ConsumerMetrics;
 pub use offset_manager::OffsetManager;
-pub use backpressure::{BackpressureController, AdaptiveBackpressureController, AdaptiveBackpressureConfig};
-pub use retry::{RetryPolicy, RetryExecutor, RetryResult};
-pub use dlq::{DlqProducer, DlqConfig};
-pub use shutdown::{ShutdownState, ShutdownCoordinator};
+pub use processor::MessageProcessor;
+pub use retry::{RetryExecutor, RetryPolicy, RetryResult};
+pub use shutdown::{ShutdownCoordinator, ShutdownState};
 
 use crate::DynamicEvent;
 use crate::SigmaEngine;
+use rdkafka::Message;
 use std::sync::Arc;
 use tracing::info;
-use rdkafka::Message;
 
 /// Default consumer configuration
 pub fn default_config() -> ConsumerConfig {
@@ -110,25 +112,28 @@ impl MessageProcessor for SigmaMessageProcessor {
 
     async fn process(&self, message: &rdkafka::message::OwnedMessage) -> Result<(), Self::Error> {
         // Extract payload
-        let payload = message.payload()
+        let payload = message
+            .payload()
             .ok_or_else(|| ConsumerError::ParseError("Empty message payload".to_string()))?;
-        
+
         // Parse JSON
         let json: serde_json::Value = serde_json::from_slice(payload)
             .map_err(|e| ConsumerError::ParseError(format!("JSON parse error: {}", e)))?;
-        
+
         // Create event and process
         let event = DynamicEvent::new(json);
-        self.engine.process_event(event).await
+        self.engine
+            .process_event(event)
+            .await
             .map_err(|e| ConsumerError::ProcessingError(format!("Engine error: {}", e)))?;
-        
+
         Ok(())
     }
-    
+
     async fn on_success(&self, _message: &rdkafka::message::OwnedMessage) {
         // Metrics will be updated here
     }
-    
+
     async fn on_failure(&self, error: &Self::Error, message: &rdkafka::message::OwnedMessage) {
         tracing::error!(
             "Failed to process message from topic: {}, partition: {}, offset: {}, error: {}",

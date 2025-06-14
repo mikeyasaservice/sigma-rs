@@ -82,11 +82,12 @@ impl Token {
             Some(Token::KeywordOr)
         } else if s.eq_ignore_ascii_case("not") {
             Some(Token::KeywordNot)
-        } else if s.eq_ignore_ascii_case("sum") 
+        } else if s.eq_ignore_ascii_case("sum")
             || s.eq_ignore_ascii_case("min")
             || s.eq_ignore_ascii_case("max")
             || s.eq_ignore_ascii_case("count")
-            || s.eq_ignore_ascii_case("avg") {
+            || s.eq_ignore_ascii_case("avg")
+        {
             Some(Token::KeywordAgg)
         } else if s.eq_ignore_ascii_case("them") {
             Some(Token::IdentifierAll)
@@ -159,11 +160,12 @@ pub fn check_keyword(input: &str) -> Token {
         Token::KeywordOr
     } else if input.eq_ignore_ascii_case("not") {
         Token::KeywordNot
-    } else if input.eq_ignore_ascii_case("sum") 
+    } else if input.eq_ignore_ascii_case("sum")
         || input.eq_ignore_ascii_case("min")
         || input.eq_ignore_ascii_case("max")
         || input.eq_ignore_ascii_case("count")
-        || input.eq_ignore_ascii_case("avg") {
+        || input.eq_ignore_ascii_case("avg")
+    {
         Token::KeywordAgg
     } else if input.eq_ignore_ascii_case("them") {
         Token::IdentifierAll
@@ -178,7 +180,7 @@ pub fn check_keyword(input: &str) -> Token {
                 return Token::StmtAllOf;
             }
         }
-        
+
         // Check if the identifier contains wildcards
         if input.contains('*') || input.contains('?') {
             Token::IdentifierWithWildcard
@@ -190,7 +192,11 @@ pub fn check_keyword(input: &str) -> Token {
 
 /// Rerun the state machine
 /// Takes a channel receiver and emits tokens on the given channel
-pub fn emit(_to: &Sender<Item>, _token: Token, _val: String) -> Result<(), Box<dyn std::error::Error>> {
+pub fn emit(
+    _to: &Sender<Item>,
+    _token: Token,
+    _val: String,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Placeholder for the emit function
     Ok(())
 }

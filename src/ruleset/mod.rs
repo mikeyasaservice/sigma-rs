@@ -3,22 +3,20 @@
 //! This module provides the core rule evaluation system that manages
 //! multiple rules and efficiently matches them against events.
 
+use anyhow::Result;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::{RwLock, Semaphore};
-use tracing::{info, warn, error, debug};
-use anyhow::Result;
+use tracing::{debug, error, info, warn};
 
 use crate::{
-    rule::{Rule, rule_from_yaml, RuleHandle},
-    tree::{Tree, build_tree},
-    event::DynamicEvent,
     ast::MatchResult,
-    SigmaEngineBuilder,
-    Result as SigmaResult,
-    SigmaError,
+    event::DynamicEvent,
     parser::ParseError,
+    rule::{rule_from_yaml, Rule, RuleHandle},
+    tree::{build_tree, Tree},
+    Result as SigmaResult, SigmaEngineBuilder, SigmaError,
 };
 
 /// Maximum number of concurrent rule evaluations to prevent resource exhaustion
@@ -107,26 +105,30 @@ impl RuleSet {
     /// Load rules from the specified directories
     pub async fn load(builder: &SigmaEngineBuilder) -> SigmaResult<Self> {
         let mut ruleset = Self::new();
-        
+
         for dir in &builder.rule_dirs {
-            ruleset.load_from_directory(dir, builder.fail_on_parse_error).await?;
+            ruleset
+                .load_from_directory(dir, builder.fail_on_parse_error)
+                .await?;
         }
-        
+
         info!(
             "Loaded ruleset: {} total rules, {} enabled, {} failed",
             ruleset.metadata.total_rules,
             ruleset.metadata.enabled_rules,
             ruleset.metadata.failed_rules
         );
-        
+
         Ok(ruleset)
     }
 
     /// Load rules from a directory
     pub async fn load_directory(&mut self, dir: &str) -> Result<()> {
-        self.load_from_directory(dir, false).await.map_err(|e| anyhow::anyhow!(e))
+        self.load_from_directory(dir, false)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))
     }
-    
+
     /// Internal method to load rules from a directory
     async fn load_from_directory(&mut self, dir: &str, fail_on_error: bool) -> SigmaResult<()> {
         let path = Path::new(dir);
@@ -134,13 +136,16 @@ impl RuleSet {
             return Err(SigmaError::Parse(format!("Directory not found: {}", dir)));
         }
 
-        let mut entries = tokio::fs::read_dir(path).await
+        let mut entries = tokio::fs::read_dir(path)
+            .await
             .map_err(|e| SigmaError::Parse(format!("Failed to read directory {}: {}", dir, e)))?;
 
         let mut file_count = 0;
-        while let Some(entry) = entries.next_entry().await
-            .map_err(|e| SigmaError::Parse(format!("Failed to read directory entry: {}", e)))? {
-            
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| SigmaError::Parse(format!("Failed to read directory entry: {}", e)))?
+        {
             // Check file count limit to prevent resource exhaustion
             if file_count >= MAX_RULES_PER_DIR {
                 warn!(
@@ -150,15 +155,15 @@ impl RuleSet {
                 break;
             }
             file_count += 1;
-            
+
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("yml") {
                 match self.load_rule_file(&path).await {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => {
                         error!("Failed to load rule {}: {}", path.display(), e);
                         self.metadata.failed_rules += 1;
-                        
+
                         if fail_on_error {
                             return Err(e);
                         }
@@ -173,21 +178,26 @@ impl RuleSet {
     /// Load a single rule file
     async fn load_rule_file(&mut self, path: &Path) -> SigmaResult<()> {
         debug!("Loading rule from {}", path.display());
-        
+
         // Use streaming read with size limit to prevent resource exhaustion
         const MAX_RULE_SIZE: u64 = 1024 * 1024; // 1MB limit per rule file
-        
-        let file = tokio::fs::File::open(path).await
-            .map_err(|e| SigmaError::Parse(format!("Failed to open file {}: {}", path.display(), e)))?;
-        
+
+        let file = tokio::fs::File::open(path).await.map_err(|e| {
+            SigmaError::Parse(format!("Failed to open file {}: {}", path.display(), e))
+        })?;
+
         let mut contents = Vec::new();
         use tokio::io::AsyncReadExt;
-        file.take(MAX_RULE_SIZE).read_to_end(&mut contents).await
-            .map_err(|e| SigmaError::Parse(format!("Failed to read file {}: {}", path.display(), e)))?;
-        
+        file.take(MAX_RULE_SIZE)
+            .read_to_end(&mut contents)
+            .await
+            .map_err(|e| {
+                SigmaError::Parse(format!("Failed to read file {}: {}", path.display(), e))
+            })?;
+
         let rule = rule_from_yaml(&contents)?;
         self.add_rule(rule).await?;
-        
+
         Ok(())
     }
 
@@ -195,16 +205,17 @@ impl RuleSet {
     pub async fn add_rule(&mut self, rule: Rule) -> SigmaResult<()> {
         // Wrap rule in Arc for efficient sharing
         let rule_arc = Arc::new(rule);
-        
+
         // Create a rule handle with clone for tree building
         // Note: RuleHandle requires ownership of Rule, not Arc<Rule>, so we must clone here.
         // The Arc is still used to share the rule with the CompiledRule struct below.
         let rule_handle = RuleHandle::new((*rule_arc).clone(), std::path::PathBuf::from("ruleset"));
-        
+
         // Build the detection tree
-        let tree = build_tree(rule_handle).await
+        let tree = build_tree(rule_handle)
+            .await
             .map_err(|e: ParseError| SigmaError::Parse(e.to_string()))?;
-        
+
         // Store the compiled rule
         let index = self.rules.len();
         let rule_id = if rule_arc.id.is_empty() {
@@ -212,17 +223,17 @@ impl RuleSet {
         } else {
             rule_arc.id.clone()
         };
-        
+
         self.rule_index.insert(rule_id.clone(), index);
         self.rules.push(CompiledRule {
             rule: rule_arc,
             tree: Arc::new(tree),
             enabled: true,
         });
-        
+
         self.metadata.total_rules += 1;
         self.metadata.enabled_rules += 1;
-        
+
         Ok(())
     }
 
@@ -249,7 +260,8 @@ impl RuleSet {
         let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_EVALUATIONS));
 
         // Evaluate rules in parallel with bounded concurrency
-        let tasks: Vec<_> = self.rules
+        let tasks: Vec<_> = self
+            .rules
             .iter()
             .filter(|r| r.enabled)
             .map(|compiled_rule| {
@@ -257,21 +269,22 @@ impl RuleSet {
                 let tree = Arc::clone(&compiled_rule.tree);
                 let rule = Arc::clone(&compiled_rule.rule);
                 let semaphore = Arc::clone(&semaphore);
-                
+
                 tokio::spawn(async move {
                     // Acquire permit before evaluation
-                    let _permit = semaphore.acquire().await
-                        .map_err(|e| SigmaError::Parse(format!("Failed to acquire semaphore: {}", e)))?;
-                    
+                    let _permit = semaphore.acquire().await.map_err(|e| {
+                        SigmaError::Parse(format!("Failed to acquire semaphore: {}", e))
+                    })?;
+
                     let rule_start = std::time::Instant::now();
                     let (matched, applicable) = tree.match_event(&*event_ref).await;
                     let evaluation_time = rule_start.elapsed();
-                    
+
                     let match_result = MatchResult {
                         matched,
                         applicable,
                     };
-                    
+
                     Ok::<RuleMatch, SigmaError>(RuleMatch {
                         rule_id: if rule.id.is_empty() {
                             "unknown".to_string()
@@ -298,7 +311,7 @@ impl RuleSet {
                     Err(e) => {
                         warn!("Rule evaluation error: {}", e);
                     }
-                }
+                },
                 Err(e) => {
                     warn!("Task join error: {}", e);
                 }
@@ -388,12 +401,12 @@ mod tests {
         let ruleset = RuleSet::new();
         assert!(ruleset.is_empty());
         assert_eq!(ruleset.len(), 0);
-        
+
         let event = DynamicEvent::new(json!({
             "EventID": 1,
             "CommandLine": "test.exe"
         }));
-        
+
         let result = ruleset.evaluate(&event).await?;
         assert_eq!(result.rules_evaluated, 0);
         assert!(result.matches.is_empty());
@@ -403,7 +416,7 @@ mod tests {
     #[tokio::test]
     async fn test_add_rule() -> SigmaResult<()> {
         let mut ruleset = RuleSet::new();
-        
+
         let rule_yaml = br#"
         title: Test Rule
         id: 12345678-1234-1234-1234-123456789001
@@ -412,10 +425,10 @@ mod tests {
                 EventID: 1
             condition: selection
         "#;
-        
+
         let rule = rule_from_yaml(rule_yaml)?;
         ruleset.add_rule(rule).await?;
-        
+
         assert_eq!(ruleset.len(), 1);
         assert!(!ruleset.is_empty());
         Ok(())
@@ -424,7 +437,7 @@ mod tests {
     #[tokio::test]
     async fn test_rule_evaluation() -> SigmaResult<()> {
         let mut ruleset = RuleSet::new();
-        
+
         // Add a matching rule
         let rule_yaml = br#"
         title: Process Creation
@@ -435,27 +448,27 @@ mod tests {
                 CommandLine|contains: 'powershell'
             condition: selection
         "#;
-        
+
         let rule = rule_from_yaml(rule_yaml)?;
         ruleset.add_rule(rule).await?;
-        
+
         // Test matching event
         let event = DynamicEvent::new(json!({
             "EventID": 1,
             "CommandLine": "powershell.exe -Command Get-Process"
         }));
-        
+
         let result = ruleset.evaluate(&event).await?;
         assert_eq!(result.rules_evaluated, 1);
         assert_eq!(result.matches.len(), 1);
         assert!(result.matches[0].matched);
-        
+
         // Test non-matching event
         let event = DynamicEvent::new(json!({
             "EventID": 1,
             "CommandLine": "notepad.exe"
         }));
-        
+
         let result = ruleset.evaluate(&event).await?;
         assert_eq!(result.rules_evaluated, 1);
         assert_eq!(result.matches.len(), 1);
@@ -467,7 +480,7 @@ mod tests {
     async fn test_concurrent_ruleset() -> SigmaResult<()> {
         let ruleset = RuleSet::new();
         let concurrent = ConcurrentRuleSet::new(ruleset);
-        
+
         let rule_yaml = br#"
         title: Test Rule
         id: 12345678-1234-1234-1234-123456789003
@@ -476,40 +489,40 @@ mod tests {
                 EventID: 1
             condition: selection
         "#;
-        
+
         let rule = rule_from_yaml(rule_yaml)?;
         concurrent.add_rule(rule).await?;
-        
+
         assert_eq!(concurrent.len().await, 1);
-        
+
         let event = DynamicEvent::new(json!({
             "EventID": 1
         }));
-        
+
         let result = concurrent.evaluate(&event).await?;
         assert_eq!(result.rules_evaluated, 1);
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_file_size_limit() -> SigmaResult<()> {
-        use tempfile::NamedTempFile;
         use std::io::Write;
-        
+        use tempfile::NamedTempFile;
+
         let mut ruleset = RuleSet::new();
-        
+
         // Create a temporary file that exceeds the 1MB limit
         let mut temp_file = NamedTempFile::new().unwrap();
-        
+
         // Write 2MB of data (exceeds 1MB limit)
         let large_content = "a".repeat(2 * 1024 * 1024);
         temp_file.write_all(large_content.as_bytes()).unwrap();
         temp_file.flush().unwrap();
-        
+
         // Loading should fail due to size limit
         let result = ruleset.load_rule_file(temp_file.path()).await;
         assert!(result.is_err());
-        
+
         // Create a small valid rule file
         let mut temp_file = NamedTempFile::new().unwrap();
         let rule_yaml = r#"
@@ -522,52 +535,58 @@ detection:
 "#;
         temp_file.write_all(rule_yaml.as_bytes()).unwrap();
         temp_file.flush().unwrap();
-        
+
         // Loading should succeed for small files
         let result = ruleset.load_rule_file(temp_file.path()).await;
         assert!(result.is_ok());
-        
+
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_concurrent_evaluation_with_semaphore() -> SigmaResult<()> {
         let mut ruleset = RuleSet::new();
-        
+
         // Add many rules to test semaphore limiting
         for i in 0..200 {
-            let rule_yaml = format!(r#"
+            let rule_yaml = format!(
+                r#"
 title: Test Rule {}
 id: {:08x}-1234-1234-1234-123456789{:03}
 detection:
     selection:
         EventID: {}
     condition: selection
-"#, i, i, i, i % 10);
-            
+"#,
+                i,
+                i,
+                i,
+                i % 10
+            );
+
             let rule = rule_from_yaml(rule_yaml.as_bytes())?;
             ruleset.add_rule(rule).await?;
         }
-        
+
         let event = DynamicEvent::new(json!({
             "EventID": 1
         }));
-        
+
         // This should complete without resource exhaustion
         let result = ruleset.evaluate(&event).await?;
         assert_eq!(result.rules_evaluated, 200);
-        
+
         // Check that some rules matched (those with EventID: 1)
         let matched_count = result.matches.iter().filter(|m| m.matched).count();
         assert!(matched_count > 0);
-        
+
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_set_rule_enabled_idempotent() -> SigmaResult<()> {
         let mut ruleset = RuleSet::new();
-        
+
         let rule_yaml = br#"
         title: Test Rule
         id: 12345678-1234-1234-1234-123456789001
@@ -576,29 +595,29 @@ detection:
                 EventID: 1
             condition: selection
         "#;
-        
+
         let rule = rule_from_yaml(rule_yaml)?;
         ruleset.add_rule(rule).await?;
-        
+
         // Initial state: 1 enabled rule
         assert_eq!(ruleset.get_metadata().enabled_rules, 1);
-        
+
         // Disable the rule
         ruleset.set_rule_enabled("12345678-1234-1234-1234-123456789001", false)?;
         assert_eq!(ruleset.get_metadata().enabled_rules, 0);
-        
+
         // Disable again - should not change counter
         ruleset.set_rule_enabled("12345678-1234-1234-1234-123456789001", false)?;
         assert_eq!(ruleset.get_metadata().enabled_rules, 0);
-        
+
         // Enable the rule
         ruleset.set_rule_enabled("12345678-1234-1234-1234-123456789001", true)?;
         assert_eq!(ruleset.get_metadata().enabled_rules, 1);
-        
+
         // Enable again - should not change counter
         ruleset.set_rule_enabled("12345678-1234-1234-1234-123456789001", true)?;
         assert_eq!(ruleset.get_metadata().enabled_rules, 1);
-        
+
         Ok(())
     }
 }

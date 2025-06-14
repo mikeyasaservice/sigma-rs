@@ -16,9 +16,9 @@ pub struct AggregationConfig {
 impl Default for AggregationConfig {
     fn default() -> Self {
         Self {
-            group_ttl: Duration::from_secs(3600), // 1 hour
+            group_ttl: Duration::from_secs(3600),      // 1 hour
             cleanup_interval: Duration::from_secs(60), // 1 minute
-            max_cache_size: 10_000, // Limit to 10K groups
+            max_cache_size: 10_000,                    // Limit to 10K groups
             max_cache_memory: Some(100 * 1024 * 1024), // 100MB limit
         }
     }

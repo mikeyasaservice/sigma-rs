@@ -9,31 +9,31 @@ use std::fmt::Debug;
 pub trait MessageProcessor: Send + Sync + 'static {
     /// Error type for processing
     type Error: std::error::Error + Send + Sync + Debug;
-    
+
     /// Process a single message
     async fn process(&self, message: &OwnedMessage) -> Result<(), Self::Error>;
-    
+
     /// Called when a message is successfully processed
     async fn on_success(&self, message: &OwnedMessage);
-    
+
     /// Called when message processing fails
     async fn on_failure(&self, error: &Self::Error, message: &OwnedMessage);
-    
+
     /// Optional pre-processing hook
     async fn pre_process(&self, _message: &OwnedMessage) -> Result<(), Self::Error> {
         Ok(())
     }
-    
+
     /// Optional post-processing hook
     async fn post_process(&self, _message: &OwnedMessage) -> Result<(), Self::Error> {
         Ok(())
     }
-    
+
     /// Check if error is retryable
     fn is_retryable(&self, _error: &Self::Error) -> bool {
         true
     }
-    
+
     /// Get processor name for metrics
     fn name(&self) -> &str {
         "MessageProcessor"
@@ -45,15 +45,15 @@ pub trait MessageProcessor: Send + Sync + 'static {
 pub trait BatchProcessor: Send + Sync + 'static {
     /// Error type for processing
     type Error: std::error::Error + Send + Sync + Debug;
-    
+
     /// Process a batch of messages
     async fn process_batch(&self, messages: Vec<OwnedMessage>) -> Vec<Result<(), Self::Error>>;
-    
+
     /// Get maximum batch size
     fn max_batch_size(&self) -> usize {
         100
     }
-    
+
     /// Get batch timeout
     fn batch_timeout(&self) -> std::time::Duration {
         std::time::Duration::from_secs(5)
@@ -93,7 +93,7 @@ impl ProcessingContext {
             start_time: std::time::Instant::now(),
         }
     }
-    
+
     /// Get processing duration
     pub fn duration(&self) -> std::time::Duration {
         self.start_time.elapsed()
@@ -133,12 +133,12 @@ impl<P: MessageProcessor> MetricsProcessor<P> {
 #[async_trait]
 impl<P: MessageProcessor> MessageProcessor for MetricsProcessor<P> {
     type Error = P::Error;
-    
+
     async fn process(&self, message: &OwnedMessage) -> Result<(), Self::Error> {
         let start = std::time::Instant::now();
         let result = self.inner.process(message).await;
         let duration = start.elapsed();
-        
+
         // Update metrics
         self.metrics.record_processing_duration(duration);
         if result.is_ok() {
@@ -146,14 +146,14 @@ impl<P: MessageProcessor> MessageProcessor for MetricsProcessor<P> {
         } else {
             self.metrics.increment_failed();
         }
-        
+
         result
     }
-    
+
     async fn on_success(&self, message: &OwnedMessage) {
         self.inner.on_success(message).await;
     }
-    
+
     async fn on_failure(&self, error: &Self::Error, message: &OwnedMessage) {
         self.inner.on_failure(error, message).await;
     }

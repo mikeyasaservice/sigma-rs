@@ -1,13 +1,13 @@
 //! Dead Letter Queue (DLQ) handling for failed messages
 
 use crate::consumer::error::{ConsumerError, ConsumerResult};
+use rdkafka::message::{Headers, OwnedMessage};
 use rdkafka::producer::{FutureProducer, FutureRecord};
-use rdkafka::message::{OwnedMessage, Headers};
 use rdkafka::Message;
+use serde_json::json;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{debug, error};
-use serde_json::json;
 
 /// DLQ producer for handling failed messages
 #[derive(Clone)]
@@ -28,19 +28,19 @@ impl DlqProducer {
             add_metadata: true,
         }
     }
-    
+
     /// Set the send timeout
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
-    
+
     /// Set whether to add metadata headers
     pub fn with_metadata(mut self, add_metadata: bool) -> Self {
         self.add_metadata = add_metadata;
         self
     }
-    
+
     /// Send a message to the DLQ
     pub async fn send_message(
         &self,
@@ -50,23 +50,23 @@ impl DlqProducer {
     ) -> ConsumerResult<()> {
         // Create the DLQ record
         let mut record = FutureRecord::to(&self.topic);
-        
+
         // Copy key if present
         if let Some(key) = original_message.key() {
             record = record.key(key);
         }
-        
+
         // Copy payload if present
         if let Some(payload) = original_message.payload() {
             record = record.payload(payload);
         }
-        
+
         // Add metadata headers if enabled
         if self.add_metadata {
             let headers = self.create_dlq_headers(original_message, error, attempts)?;
             record = record.headers(headers);
         }
-        
+
         // Send to DLQ
         match self.producer.send(record, self.timeout).await {
             Ok((partition, offset)) => {
@@ -82,7 +82,7 @@ impl DlqProducer {
             }
         }
     }
-    
+
     /// Create DLQ headers with metadata
     fn create_dlq_headers(
         &self,
@@ -91,44 +91,44 @@ impl DlqProducer {
         attempts: u32,
     ) -> ConsumerResult<rdkafka::message::OwnedHeaders> {
         let mut headers = rdkafka::message::OwnedHeaders::new();
-        
+
         // Add original topic and partition
         headers = headers.insert(rdkafka::message::Header {
             key: "dlq.original.topic",
             value: Some(original_message.topic().as_bytes()),
         });
-        
+
         headers = headers.insert(rdkafka::message::Header {
             key: "dlq.original.partition",
             value: Some(original_message.partition().to_string().as_bytes()),
         });
-        
+
         headers = headers.insert(rdkafka::message::Header {
             key: "dlq.original.offset",
             value: Some(original_message.offset().to_string().as_bytes()),
         });
-        
+
         // Add error information
         headers = headers.insert(rdkafka::message::Header {
             key: "dlq.error.message",
             value: Some(error.as_bytes()),
         });
-        
+
         headers = headers.insert(rdkafka::message::Header {
             key: "dlq.error.attempts",
             value: Some(attempts.to_string().as_bytes()),
         });
-        
+
         // Add timestamp
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| ConsumerError::DlqError(format!("Time error: {}", e)))?;
-        
+
         headers = headers.insert(rdkafka::message::Header {
             key: "dlq.timestamp",
             value: Some(timestamp.as_secs().to_string().as_bytes()),
         });
-        
+
         // Copy original headers if present
         if let Some(original_headers) = original_message.headers() {
             for header in original_headers.iter() {
@@ -141,10 +141,10 @@ impl DlqProducer {
                 }
             }
         }
-        
+
         Ok(headers)
     }
-    
+
     /// Send a message with a JSON error payload
     pub async fn send_with_error_payload(
         &self,
@@ -171,25 +171,24 @@ impl DlqProducer {
             "original_payload": original_message.payload()
                 .and_then(|p| String::from_utf8(p.to_vec()).ok()),
         });
-        
+
         let payload_bytes = serde_json::to_vec(&error_payload)
             .map_err(|e| ConsumerError::DlqError(format!("JSON serialization error: {}", e)))?;
-        
+
         // Create the DLQ record
-        let mut record = FutureRecord::to(&self.topic)
-            .payload(&payload_bytes);
-        
+        let mut record = FutureRecord::to(&self.topic).payload(&payload_bytes);
+
         // Use original key if present
         if let Some(key) = original_message.key() {
             record = record.key(key);
         }
-        
+
         // Add metadata headers
         if self.add_metadata {
             let headers = self.create_dlq_headers(original_message, error, attempts)?;
             record = record.headers(headers);
         }
-        
+
         // Send to DLQ
         match self.producer.send(record, self.timeout).await {
             Ok((partition, offset)) => {
@@ -234,7 +233,7 @@ impl Default for DlqConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_dlq_config_default() {
         let config = DlqConfig::default();

@@ -1,5 +1,5 @@
 //! High-performance Rust implementation of Sigma rule engine
-//! 
+//!
 //! This library provides a complete implementation of the Sigma rule specification
 //! with support for real-time event processing, Redpanda integration, and
 //! comprehensive performance optimizations.
@@ -61,10 +61,10 @@
 #![allow(clippy::module_inception)]
 
 // Re-export commonly used items
-pub use event::{Event, Keyworder, Selector, Value, DynamicEvent};
 pub use ast::{Branch, MatchResult};
 pub use error::{Result, SigmaError};
-pub use ruleset::{RuleSet, RuleSetResult, RuleMatch, ConcurrentRuleSet};
+pub use event::{DynamicEvent, Event, Keyworder, Selector, Value};
+pub use ruleset::{ConcurrentRuleSet, RuleMatch, RuleSet, RuleSetResult};
 
 /// Event abstractions and implementations
 pub mod event;
@@ -72,10 +72,8 @@ pub mod event;
 /// AST nodes and matching engine
 pub mod ast;
 
-
 /// Error types
 pub mod error;
-
 
 /// Lexical analysis
 pub mod lexer;
@@ -137,12 +135,16 @@ pub mod telemetry;
 pub mod telemetry {
     //! Stub module when telemetry feature is disabled
     use anyhow::Result;
-    
+
     #[derive(Debug, Clone, Default)]
     pub struct TelemetryConfig;
-    
-    pub fn init_telemetry(_: TelemetryConfig) -> Result<()> { Ok(()) }
-    pub fn init_telemetry_from_env() -> Result<()> { Ok(()) }
+
+    pub fn init_telemetry(_: TelemetryConfig) -> Result<()> {
+        Ok(())
+    }
+    pub fn init_telemetry_from_env() -> Result<()> {
+        Ok(())
+    }
     pub fn shutdown_telemetry() {}
 }
 
@@ -152,7 +154,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Initialize the tracing subscriber with default settings
 pub fn init_tracing() {
     use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-    
+
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .with(tracing_subscriber::fmt::layer().json())
@@ -230,37 +232,37 @@ impl SigmaEngineBuilder {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Add a rule directory
     pub fn add_rule_dir(mut self, dir: impl Into<String>) -> Self {
         self.rule_dirs.push(dir.into());
         self
     }
-    
+
     /// Set whether to fail on parse errors
     pub fn fail_on_parse_error(mut self, fail: bool) -> Self {
         self.fail_on_parse_error = fail;
         self
     }
-    
+
     /// Set whether to collapse whitespace
     pub fn collapse_whitespace(mut self, collapse: bool) -> Self {
         self.collapse_whitespace = collapse;
         self
     }
-    
+
     /// Set the number of worker threads
     pub fn worker_threads(mut self, threads: usize) -> Self {
         self.worker_threads = threads;
         self
     }
-    
+
     /// Configure Kafka/Redpanda integration
     pub fn with_kafka(mut self, config: KafkaConfig) -> Self {
         self.kafka_config = Some(config);
         self
     }
-    
+
     /// Build the Sigma engine
     pub async fn build(self) -> Result<SigmaEngine> {
         SigmaEngine::new(self).await
@@ -270,7 +272,7 @@ impl SigmaEngineBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_builder_defaults() {
         let builder = SigmaEngineBuilder::new();
@@ -280,7 +282,7 @@ mod tests {
         assert_eq!(builder.worker_threads, num_cpus::get());
         assert!(builder.kafka_config.is_none());
     }
-    
+
     #[test]
     fn test_builder_configuration() {
         let kafka_config = KafkaConfig {
@@ -294,14 +296,14 @@ mod tests {
             backpressure_buffer_size: Some(1000),
             enable_metrics: true,
         };
-        
+
         let builder = SigmaEngineBuilder::new()
             .add_rule_dir("/path/to/rules")
             .fail_on_parse_error(true)
             .collapse_whitespace(false)
             .worker_threads(4)
             .with_kafka(kafka_config);
-        
+
         assert_eq!(builder.rule_dirs, vec!["/path/to/rules"]);
         assert!(builder.fail_on_parse_error);
         assert!(!builder.collapse_whitespace);

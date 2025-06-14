@@ -4,22 +4,20 @@ use crate::lexer::token::Token;
 pub fn valid_token_sequence(t1: Token, t2: Token) -> bool {
     // Special handling for begin state
     if is_begin_token(t1) {
-        return matches!(t2, 
-            Token::Identifier | 
-            Token::IdentifierWithWildcard |
-            Token::KeywordNot |
-            Token::SepLpar |
-            Token::StmtAllOf |
-            Token::StmtOneOf
+        return matches!(
+            t2,
+            Token::Identifier
+                | Token::IdentifierWithWildcard
+                | Token::KeywordNot
+                | Token::SepLpar
+                | Token::StmtAllOf
+                | Token::StmtOneOf
         );
     }
-    
+
     match t2 {
         Token::StmtAllOf | Token::StmtOneOf => match t1 {
-            Token::SepLpar
-            | Token::KeywordAnd
-            | Token::KeywordOr
-            | Token::KeywordNot => true,
+            Token::SepLpar | Token::KeywordAnd | Token::KeywordOr | Token::KeywordNot => true,
             _ => is_begin_token(t1),
         },
         Token::IdentifierAll => matches!(t1, Token::StmtAllOf | Token::StmtOneOf),
@@ -32,43 +30,42 @@ pub fn valid_token_sequence(t1: Token, t2: Token) -> bool {
             | Token::StmtAllOf => true,
             _ => is_begin_token(t1),
         },
-        Token::KeywordAnd | Token::KeywordOr => matches!(t1,
+        Token::KeywordAnd | Token::KeywordOr => matches!(
+            t1,
             Token::Identifier
-            | Token::IdentifierAll
-            | Token::IdentifierWithWildcard
-            | Token::SepRpar
+                | Token::IdentifierAll
+                | Token::IdentifierWithWildcard
+                | Token::SepRpar
         ),
         Token::KeywordNot => match t1 {
-            Token::KeywordAnd
-            | Token::KeywordOr
-            | Token::SepLpar => true,
+            Token::KeywordAnd | Token::KeywordOr | Token::SepLpar => true,
             _ => is_begin_token(t1),
         },
         Token::SepLpar => match t1 {
-            Token::KeywordAnd
-            | Token::KeywordOr
-            | Token::KeywordNot
-            | Token::SepLpar => true,
+            Token::KeywordAnd | Token::KeywordOr | Token::KeywordNot | Token::SepLpar => true,
             _ => is_begin_token(t1),
         },
-        Token::SepRpar => matches!(t1,
+        Token::SepRpar => matches!(
+            t1,
             Token::Identifier
-            | Token::IdentifierAll
-            | Token::IdentifierWithWildcard
-            | Token::SepLpar
-            | Token::SepRpar
+                | Token::IdentifierAll
+                | Token::IdentifierWithWildcard
+                | Token::SepLpar
+                | Token::SepRpar
         ),
-        Token::LitEof => matches!(t1,
+        Token::LitEof => matches!(
+            t1,
             Token::Identifier
-            | Token::IdentifierAll
-            | Token::IdentifierWithWildcard
-            | Token::SepRpar
+                | Token::IdentifierAll
+                | Token::IdentifierWithWildcard
+                | Token::SepRpar
         ),
-        Token::SepPipe => matches!(t1,
+        Token::SepPipe => matches!(
+            t1,
             Token::Identifier
-            | Token::IdentifierAll
-            | Token::IdentifierWithWildcard
-            | Token::SepRpar
+                | Token::IdentifierAll
+                | Token::IdentifierWithWildcard
+                | Token::SepRpar
         ),
         _ => false,
     }
@@ -106,7 +103,7 @@ mod tests {
         assert!(valid_token_sequence(Token::Identifier, Token::SepRpar));
     }
 
-    #[test] 
+    #[test]
     fn test_invalid_sequences() {
         // Invalid sequences
         assert!(!valid_token_sequence(Token::Identifier, Token::Identifier));

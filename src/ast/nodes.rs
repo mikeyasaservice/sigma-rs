@@ -1,6 +1,6 @@
 use super::{Branch, FieldRule, MatchResult};
-use crate::event::Event;
 use crate::error::SigmaError;
+use crate::event::Event;
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -27,7 +27,7 @@ impl Branch for NodeAnd {
         if !left_result.matched {
             return MatchResult::new(false, left_result.applicable);
         }
-        
+
         let right_result = self.right.matches(event).await;
         MatchResult::new(
             left_result.matched && right_result.matched,
@@ -63,7 +63,7 @@ impl Branch for NodeOr {
         if left_result.matched {
             return MatchResult::new(true, left_result.applicable);
         }
-        
+
         let right_result = self.right.matches(event).await;
         MatchResult::new(
             left_result.matched || right_result.matched,
@@ -124,7 +124,7 @@ impl NodeSimpleAnd {
         let mut iter = self.branches.into_iter();
         match (iter.next(), iter.next(), branches_len.saturating_sub(2)) {
             (None, _, _) => Err(SigmaError::InvalidMatcher(
-                "Cannot reduce empty AND node - this indicates a parser bug".to_string()
+                "Cannot reduce empty AND node - this indicates a parser bug".to_string(),
             )),
             (Some(single), None, 0) => Ok(single),
             (Some(left), Some(right), 0) => Ok(Arc::new(NodeAnd::new(left, right))),
@@ -154,10 +154,7 @@ impl Branch for NodeSimpleAnd {
     }
 
     fn describe(&self) -> String {
-        let descriptions: Vec<String> = self.branches
-            .iter()
-            .map(|b| b.describe())
-            .collect();
+        let descriptions: Vec<String> = self.branches.iter().map(|b| b.describe()).collect();
         format!("({})", descriptions.join(" AND "))
     }
 }
@@ -181,7 +178,7 @@ impl NodeSimpleOr {
         let mut iter = self.branches.into_iter();
         match (iter.next(), iter.next(), branches_len.saturating_sub(2)) {
             (None, _, _) => Err(SigmaError::InvalidMatcher(
-                "Cannot reduce empty OR node - this indicates a parser bug".to_string()
+                "Cannot reduce empty OR node - this indicates a parser bug".to_string(),
             )),
             (Some(single), None, 0) => Ok(single),
             (Some(left), Some(right), 0) => Ok(Arc::new(NodeOr::new(left, right))),
@@ -202,7 +199,7 @@ impl NodeSimpleOr {
 impl Branch for NodeSimpleOr {
     async fn matches(&self, event: &dyn Event) -> MatchResult {
         let mut one_applicable = false;
-        
+
         for branch in &self.branches {
             let result = branch.matches(event).await;
             if result.matched {
@@ -212,15 +209,12 @@ impl Branch for NodeSimpleOr {
                 one_applicable = true;
             }
         }
-        
+
         MatchResult::new(false, one_applicable)
     }
 
     fn describe(&self) -> String {
-        let descriptions: Vec<String> = self.branches
-            .iter()
-            .map(|b| b.describe())
-            .collect();
+        let descriptions: Vec<String> = self.branches.iter().map(|b| b.describe()).collect();
         format!("({})", descriptions.join(" OR "))
     }
 }
@@ -247,7 +241,7 @@ impl Identifier {
             field_rule: FieldRule::new(Arc::from(field), pattern),
         }
     }
-    
+
     /// Create an identifier node from an existing field rule
     pub fn from_rule(rule: FieldRule) -> Self {
         Self { field_rule: rule }
@@ -259,7 +253,7 @@ impl Branch for Identifier {
     async fn matches(&self, event: &dyn Event) -> MatchResult {
         self.field_rule.matches(event).await
     }
-    
+
     fn describe(&self) -> String {
         self.field_rule.describe()
     }
@@ -408,7 +402,10 @@ mod tests {
             .collect();
         let and_node = NodeSimpleAnd::new(branches);
         let result = and_node.reduce().unwrap();
-        assert_eq!(result.describe(), "(test0 AND test1 AND test2 AND test3 AND test4)");
+        assert_eq!(
+            result.describe(),
+            "(test0 AND test1 AND test2 AND test3 AND test4)"
+        );
     }
 
     #[test]
@@ -442,6 +439,9 @@ mod tests {
             .collect();
         let or_node = NodeSimpleOr::new(branches);
         let result = or_node.reduce().unwrap();
-        assert_eq!(result.describe(), "(test0 OR test1 OR test2 OR test3 OR test4)");
+        assert_eq!(
+            result.describe(),
+            "(test0 OR test1 OR test2 OR test3 OR test4)"
+        );
     }
 }

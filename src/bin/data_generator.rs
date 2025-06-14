@@ -1,11 +1,11 @@
 //! Windows Event Log Data Generator
-//! 
+//!
 //! Generates realistic Windows event data in ECS format similar to Winlogbeat output
 //! for benchmarking against the Sigma rule engine.
 
-use serde_json::{json, Value};
 use clap::{Arg, Command};
 use rand::prelude::*;
+use serde_json::{json, Value};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
@@ -47,9 +47,15 @@ const WINDOWS_SECURITY_EVENTS: &[(u32, &str)] = &[
     (4689, "A process has exited"),
     (4720, "A user account was created"),
     (4724, "An attempt was made to reset an account's password"),
-    (4728, "A member was added to a security-enabled global group"),
+    (
+        4728,
+        "A member was added to a security-enabled global group",
+    ),
     (4732, "A member was added to a security-enabled local group"),
-    (4756, "A member was added to a security-enabled universal group"),
+    (
+        4756,
+        "A member was added to a security-enabled universal group",
+    ),
 ];
 
 /// Common Windows process names
@@ -80,7 +86,7 @@ const WINDOWS_PROCESSES: &[&str] = &[
 /// Suspicious processes that should trigger some rules
 const SUSPICIOUS_PROCESSES: &[&str] = &[
     "C:\\Windows\\System32\\cmd.exe",
-    "C:\\Windows\\System32\\powershell.exe", 
+    "C:\\Windows\\System32\\powershell.exe",
     "C:\\Windows\\System32\\regsvr32.exe",
     "C:\\Windows\\System32\\rundll32.exe",
     "C:\\Windows\\System32\\mshta.exe",
@@ -105,18 +111,32 @@ const COMMAND_LINES: &[&str] = &[
 
 /// Windows user names
 const USERS: &[&str] = &[
-    "SYSTEM", "Administrator", "Guest", "DefaultAccount",
-    "john.doe", "jane.smith", "admin", "user", "service_account",
-    "NT AUTHORITY\\SYSTEM", "NT AUTHORITY\\LOCAL SERVICE", 
+    "SYSTEM",
+    "Administrator",
+    "Guest",
+    "DefaultAccount",
+    "john.doe",
+    "jane.smith",
+    "admin",
+    "user",
+    "service_account",
+    "NT AUTHORITY\\SYSTEM",
+    "NT AUTHORITY\\LOCAL SERVICE",
     "NT AUTHORITY\\NETWORK SERVICE",
 ];
 
 /// Network destinations for connection events
 const NETWORK_DESTINATIONS: &[&str] = &[
-    "192.168.1.100", "10.0.0.50", "172.16.0.10",
-    "8.8.8.8", "1.1.1.1", "208.67.222.222",
-    "malicious-domain.com", "suspicious-site.net",
-    "legitimate-service.com", "update-server.microsoft.com",
+    "192.168.1.100",
+    "10.0.0.50",
+    "172.16.0.10",
+    "8.8.8.8",
+    "1.1.1.1",
+    "208.67.222.222",
+    "malicious-domain.com",
+    "suspicious-site.net",
+    "legitimate-service.com",
+    "update-server.microsoft.com",
 ];
 
 fn generate_base_event(event_id: u32, timestamp: &str) -> Value {
@@ -159,24 +179,35 @@ fn generate_base_event(event_id: u32, timestamp: &str) -> Value {
 
 fn generate_process_creation_event(suspicious: bool) -> Value {
     let mut rng = thread_rng();
-    let timestamp = format!("2023-{:02}-{:02}T{:02}:{:02}:{:02}.{}Z", 
-        rng.gen_range(1..=12), 
+    let timestamp = format!(
+        "2023-{:02}-{:02}T{:02}:{:02}:{:02}.{}Z",
+        rng.gen_range(1..=12),
         rng.gen_range(1..=28),
         rng.gen_range(0..24),
         rng.gen_range(0..60),
         rng.gen_range(0..60),
         rng.gen_range(100..999)
     );
-    
+
     let mut event = generate_base_event(1, &timestamp);
-    
+
     let (image, command_line) = if suspicious && rng.gen_bool(0.3) {
         // Generate suspicious activity
         let proc = SUSPICIOUS_PROCESSES.choose(&mut rng).unwrap();
         let cmd = if proc.contains("powershell") {
-            format!("{} -EncodedCommand {}", proc, base64_encode(&random_string(50)))
+            format!(
+                "{} -EncodedCommand {}",
+                proc,
+                base64_encode(&random_string(50))
+            )
         } else if proc.contains("cmd") {
-            format!("{} /c {}", proc, ["whoami", "net user", "ipconfig /all"].choose(&mut rng).unwrap())
+            format!(
+                "{} /c {}",
+                proc,
+                ["whoami", "net user", "ipconfig /all"]
+                    .choose(&mut rng)
+                    .unwrap()
+            )
         } else {
             format!("{} {}", proc, random_string(20))
         };
@@ -188,14 +219,14 @@ fn generate_process_creation_event(suspicious: bool) -> Value {
             p if p.contains("chrome") => format!("{} --new-tab https://example.com", p),
             p if p.contains("notepad") => format!("{} document.txt", p),
             p if p.contains("explorer") => p.to_string(),
-            _ => format!("{} {}", proc, random_string(10))
+            _ => format!("{} {}", proc, random_string(10)),
         };
         (proc.to_string(), cmd)
     };
-    
+
     let user = USERS.choose(&mut rng).unwrap();
     let parent_image = WINDOWS_PROCESSES.choose(&mut rng).unwrap();
-    
+
     // Add process-specific fields
     event.as_object_mut().unwrap().extend([
         ("process".to_string(), json!({
@@ -223,111 +254,140 @@ fn generate_process_creation_event(suspicious: bool) -> Value {
         ("ProcessId".to_string(), json!(rng.gen_range(1000..65535))),
         ("ParentProcessId".to_string(), json!(rng.gen_range(100..1000))),
     ].into_iter());
-    
+
     event
 }
 
 fn generate_network_connection_event() -> Value {
     let mut rng = thread_rng();
-    let timestamp = format!("2023-{:02}-{:02}T{:02}:{:02}:{:02}.{}Z", 
-        rng.gen_range(1..=12), 
+    let timestamp = format!(
+        "2023-{:02}-{:02}T{:02}:{:02}:{:02}.{}Z",
+        rng.gen_range(1..=12),
         rng.gen_range(1..=28),
         rng.gen_range(0..24),
         rng.gen_range(0..60),
         rng.gen_range(0..60),
         rng.gen_range(100..999)
     );
-    
+
     let mut event = generate_base_event(3, &timestamp);
-    
+
     let image = WINDOWS_PROCESSES.choose(&mut rng).unwrap();
     let dest_ip = NETWORK_DESTINATIONS.choose(&mut rng).unwrap();
-    let dest_port = [80, 443, 53, 8080, 8443, 3389, 445, 139].choose(&mut rng).unwrap();
+    let dest_port = [80, 443, 53, 8080, 8443, 3389, 445, 139]
+        .choose(&mut rng)
+        .unwrap();
     let src_port = rng.gen_range(49152..65535);
-    
-    event.as_object_mut().unwrap().extend([
-        ("source".to_string(), json!({
-            "ip": "192.168.1.100",
-            "port": src_port
-        })),
-        ("destination".to_string(), json!({
-            "ip": dest_ip,
-            "port": dest_port
-        })),
-        ("network".to_string(), json!({
-            "protocol": "tcp",
-            "direction": "outbound"
-        })),
-        // Raw Sysmon fields
-        ("EventID".to_string(), json!(3)),
-        ("Image".to_string(), json!(image)),
-        ("SourceIp".to_string(), json!("192.168.1.100")),
-        ("SourcePort".to_string(), json!(src_port)),
-        ("DestinationIp".to_string(), json!(dest_ip)),
-        ("DestinationPort".to_string(), json!(dest_port)),
-        ("Protocol".to_string(), json!("tcp")),
-    ].into_iter());
-    
+
+    event.as_object_mut().unwrap().extend(
+        [
+            (
+                "source".to_string(),
+                json!({
+                    "ip": "192.168.1.100",
+                    "port": src_port
+                }),
+            ),
+            (
+                "destination".to_string(),
+                json!({
+                    "ip": dest_ip,
+                    "port": dest_port
+                }),
+            ),
+            (
+                "network".to_string(),
+                json!({
+                    "protocol": "tcp",
+                    "direction": "outbound"
+                }),
+            ),
+            // Raw Sysmon fields
+            ("EventID".to_string(), json!(3)),
+            ("Image".to_string(), json!(image)),
+            ("SourceIp".to_string(), json!("192.168.1.100")),
+            ("SourcePort".to_string(), json!(src_port)),
+            ("DestinationIp".to_string(), json!(dest_ip)),
+            ("DestinationPort".to_string(), json!(dest_port)),
+            ("Protocol".to_string(), json!("tcp")),
+        ]
+        .into_iter(),
+    );
+
     event
 }
 
 fn generate_registry_event() -> Value {
     let mut rng = thread_rng();
-    let timestamp = format!("2023-{:02}-{:02}T{:02}:{:02}:{:02}.{}Z", 
-        rng.gen_range(1..=12), 
+    let timestamp = format!(
+        "2023-{:02}-{:02}T{:02}:{:02}:{:02}.{}Z",
+        rng.gen_range(1..=12),
         rng.gen_range(1..=28),
         rng.gen_range(0..24),
         rng.gen_range(0..60),
         rng.gen_range(0..60),
         rng.gen_range(100..999)
     );
-    
+
     let mut event = generate_base_event(13, &timestamp);
-    
+
     let registry_keys = [
         "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
         "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
         "HKLM\\SYSTEM\\CurrentControlSet\\Services",
         "HKLM\\SOFTWARE\\Classes\\exefile\\shell\\open\\command",
     ];
-    
+
     let key = registry_keys.choose(&mut rng).unwrap();
     let image = WINDOWS_PROCESSES.choose(&mut rng).unwrap();
-    
-    event.as_object_mut().unwrap().extend([
-        ("registry".to_string(), json!({
-            "key": key,
-            "value": random_string(10),
-            "data": {
-                "strings": [format!("C:\\temp\\{}.exe", random_string(8))]
-            }
-        })),
-        // Raw Sysmon fields
-        ("EventID".to_string(), json!(13)),
-        ("Image".to_string(), json!(image)),
-        ("TargetObject".to_string(), json!(format!("{}\\{}", key, random_string(10)))),
-        ("Details".to_string(), json!(format!("C:\\temp\\{}.exe", random_string(8)))),
-    ].into_iter());
-    
+
+    event.as_object_mut().unwrap().extend(
+        [
+            (
+                "registry".to_string(),
+                json!({
+                    "key": key,
+                    "value": random_string(10),
+                    "data": {
+                        "strings": [format!("C:\\temp\\{}.exe", random_string(8))]
+                    }
+                }),
+            ),
+            // Raw Sysmon fields
+            ("EventID".to_string(), json!(13)),
+            ("Image".to_string(), json!(image)),
+            (
+                "TargetObject".to_string(),
+                json!(format!("{}\\{}", key, random_string(10))),
+            ),
+            (
+                "Details".to_string(),
+                json!(format!("C:\\temp\\{}.exe", random_string(8))),
+            ),
+        ]
+        .into_iter(),
+    );
+
     event
 }
 
 fn generate_pipe_event() -> Value {
     let mut rng = thread_rng();
-    let timestamp = format!("2023-{:02}-{:02}T{:02}:{:02}:{:02}.{}Z", 
-        rng.gen_range(1..=12), 
+    let timestamp = format!(
+        "2023-{:02}-{:02}T{:02}:{:02}:{:02}.{}Z",
+        rng.gen_range(1..=12),
         rng.gen_range(1..=28),
         rng.gen_range(0..24),
         rng.gen_range(0..60),
         rng.gen_range(0..60),
         rng.gen_range(100..999)
     );
-    
+
     let mut event = generate_base_event(17, &timestamp);
-    
+
     let pipe_names = [
         "\\pipe\\lsarpc",
-        "\\pipe\\samr", 
+        "\\pipe\\samr",
         "\\pipe\\netlogon",
         "\\pipe\\srvsvc",
         "\\pipe\\wkssvc",
@@ -335,17 +395,26 @@ fn generate_pipe_event() -> Value {
         "\\pipe\\MSCTF.Server.{guid}",
         "\\pipe\\mojo.{pid}.{rand}",
     ];
-    
+
     let pipe_name = pipe_names.choose(&mut rng).unwrap();
     let image = WINDOWS_PROCESSES.choose(&mut rng).unwrap();
-    
-    event.as_object_mut().unwrap().extend([
-        // Raw Sysmon fields  
-        ("EventID".to_string(), json!(17)),
-        ("Image".to_string(), json!(image)),
-        ("PipeName".to_string(), json!(pipe_name.replace("{guid}", &random_string(36)).replace("{pid}", &rng.gen_range(1000..9999).to_string()).replace("{rand}", &random_string(8)))),
-    ].into_iter());
-    
+
+    event.as_object_mut().unwrap().extend(
+        [
+            // Raw Sysmon fields
+            ("EventID".to_string(), json!(17)),
+            ("Image".to_string(), json!(image)),
+            (
+                "PipeName".to_string(),
+                json!(pipe_name
+                    .replace("{guid}", &random_string(36))
+                    .replace("{pid}", &rng.gen_range(1000..9999).to_string())
+                    .replace("{rand}", &random_string(8))),
+            ),
+        ]
+        .into_iter(),
+    );
+
     event
 }
 
@@ -358,20 +427,20 @@ fn random_string(length: usize) -> String {
 }
 
 fn base64_encode(input: &str) -> String {
-    use base64::{Engine as _, engine::general_purpose};
+    use base64::{engine::general_purpose, Engine as _};
     general_purpose::STANDARD.encode(input.as_bytes())
 }
 
 fn generate_event_mix(suspicious_ratio: f64) -> Value {
     let mut rng = thread_rng();
-    
+
     let event_type = rng.gen_range(0..100);
     match event_type {
         0..=60 => generate_process_creation_event(rng.gen_bool(suspicious_ratio)), // 60% process creation
-        61..=75 => generate_network_connection_event(), // 15% network
-        76..=90 => generate_registry_event(), // 15% registry  
-        91..=99 => generate_pipe_event(), // 10% pipes
-        _ => generate_process_creation_event(false)
+        61..=75 => generate_network_connection_event(),                            // 15% network
+        76..=90 => generate_registry_event(),                                      // 15% registry
+        91..=99 => generate_pipe_event(),                                          // 10% pipes
+        _ => generate_process_creation_event(false),
     }
 }
 
@@ -379,47 +448,60 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("Windows Event Data Generator")
         .version("1.0")
         .about("Generates realistic Windows event data in ECS format for Sigma benchmarking")
-        .arg(Arg::new("count")
-            .short('c')
-            .long("count")
-            .value_name("NUMBER")
-            .help("Number of events to generate")
-            .default_value("10000"))
-        .arg(Arg::new("output")
-            .short('o')
-            .long("output")
-            .value_name("FILE")
-            .help("Output file (JSONL format)")
-            .default_value("windows_events.jsonl"))
-        .arg(Arg::new("suspicious-ratio")
-            .short('s')
-            .long("suspicious")
-            .value_name("RATIO")
-            .help("Ratio of suspicious events (0.0-1.0)")
-            .default_value("0.05"))
+        .arg(
+            Arg::new("count")
+                .short('c')
+                .long("count")
+                .value_name("NUMBER")
+                .help("Number of events to generate")
+                .default_value("10000"),
+        )
+        .arg(
+            Arg::new("output")
+                .short('o')
+                .long("output")
+                .value_name("FILE")
+                .help("Output file (JSONL format)")
+                .default_value("windows_events.jsonl"),
+        )
+        .arg(
+            Arg::new("suspicious-ratio")
+                .short('s')
+                .long("suspicious")
+                .value_name("RATIO")
+                .help("Ratio of suspicious events (0.0-1.0)")
+                .default_value("0.05"),
+        )
         .get_matches();
 
     let count: usize = matches.get_one::<String>("count").unwrap().parse()?;
     let output_file = matches.get_one::<String>("output").unwrap();
-    let suspicious_ratio: f64 = matches.get_one::<String>("suspicious-ratio").unwrap().parse()?;
+    let suspicious_ratio: f64 = matches
+        .get_one::<String>("suspicious-ratio")
+        .unwrap()
+        .parse()?;
 
-    println!("Generating {} Windows events with {:.1}% suspicious ratio...", count, suspicious_ratio * 100.0);
-    
+    println!(
+        "Generating {} Windows events with {:.1}% suspicious ratio...",
+        count,
+        suspicious_ratio * 100.0
+    );
+
     let file = File::create(output_file)?;
     let mut writer = BufWriter::new(file);
-    
+
     for i in 0..count {
         if i % 1000 == 0 {
             println!("Generated {} events...", i);
         }
-        
+
         let event = generate_event_mix(suspicious_ratio);
         writeln!(writer, "{}", serde_json::to_string(&event)?)?;
     }
-    
+
     writer.flush()?;
     println!("Generated {} events in {}", count, output_file);
-    
+
     Ok(())
 }
 

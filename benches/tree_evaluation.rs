@@ -1,11 +1,15 @@
 //! Tree evaluation benchmarks comparable to Go implementation
-//! 
+//!
 //! This benchmarks the core tree evaluation performance that matches
 //! the Go benchmarks for TreePositive and TreeNegative scenarios.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use sigma_rs::{DynamicEvent, rule::{RuleHandle, rule_from_yaml}, tree::builder::build_tree};
 use serde_json::json;
+use sigma_rs::{
+    rule::{rule_from_yaml, RuleHandle},
+    tree::builder::build_tree,
+    DynamicEvent,
+};
 use std::hint::black_box;
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
@@ -22,7 +26,7 @@ fn create_test_events() -> Vec<DynamicEvent> {
         })),
         DynamicEvent::new(json!({
             "EventID": 1,
-            "Image": "C:\\Windows\\System32\\powershell.exe", 
+            "Image": "C:\\Windows\\System32\\powershell.exe",
             "CommandLine": "powershell.exe -enc dGVzdA==",
             "User": "admin"
         })),
@@ -32,7 +36,7 @@ fn create_test_events() -> Vec<DynamicEvent> {
             "DestinationIp": "192.168.1.100",
             "DestinationPort": 443
         })),
-        // Negative match events  
+        // Negative match events
         DynamicEvent::new(json!({
             "EventID": 2,
             "Image": "C:\\Program Files\\Chrome\\chrome.exe",
@@ -170,14 +174,14 @@ detection:
 async fn build_benchmark_trees() -> Vec<sigma_rs::tree::Tree> {
     let rules = create_test_rules();
     let mut trees = Vec::new();
-    
+
     for (i, rule_yaml) in rules.iter().enumerate() {
         let rule = rule_from_yaml(rule_yaml.as_bytes()).unwrap();
         let rule_handle = RuleHandle::new(rule, PathBuf::from(format!("bench_rule_{}.yml", i)));
         let tree = build_tree(rule_handle).await.unwrap();
         trees.push(tree);
     }
-    
+
     trees
 }
 
@@ -185,7 +189,7 @@ fn benchmark_tree_positive(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let trees = rt.block_on(build_benchmark_trees());
     let positive_event = &create_test_events()[0]; // First event matches most rules
-    
+
     // Simple benchmark to match Go style
     c.bench_function("tree_positive", |b| {
         b.iter(|| {
@@ -202,7 +206,7 @@ fn benchmark_tree_negative(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let trees = rt.block_on(build_benchmark_trees());
     let negative_event = &create_test_events()[3]; // Fourth event shouldn't match most rules
-    
+
     // Simple benchmark to match Go style
     c.bench_function("tree_negative", |b| {
         b.iter(|| {
@@ -215,10 +219,5 @@ fn benchmark_tree_negative(c: &mut Criterion) {
     });
 }
 
-
-criterion_group!(
-    benches, 
-    benchmark_tree_positive,
-    benchmark_tree_negative
-);
+criterion_group!(benches, benchmark_tree_positive, benchmark_tree_negative);
 criterion_main!(benches);

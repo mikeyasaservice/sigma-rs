@@ -2,8 +2,8 @@
 
 use rdkafka::consumer::Consumer;
 use rdkafka::error::KafkaError;
-use rdkafka::TopicPartitionList;
 use rdkafka::Offset;
+use rdkafka::TopicPartitionList;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
@@ -38,7 +38,7 @@ impl OffsetManager {
             _commit_interval: commit_interval,
         }
     }
-    
+
     /// Get or intern a topic name
     async fn intern_topic(&self, topic: &str) -> Arc<String> {
         // Fast path: check if already interned
@@ -48,52 +48,53 @@ impl OffsetManager {
                 return Arc::clone(interned);
             }
         }
-        
+
         // Slow path: intern the topic name
         let mut cache = self.topic_cache.write().await;
-        cache.entry(topic.to_string())
+        cache
+            .entry(topic.to_string())
             .or_insert_with(|| Arc::new(topic.to_string()))
             .clone()
     }
-    
+
     /// Mark an offset for commit
     pub async fn mark_offset(&self, topic: &str, partition: i32, offset: i64) {
         let interned_topic = self.intern_topic(topic).await;
         let mut pending = self.pending_offsets.lock().await;
         pending.insert((interned_topic, partition), offset);
-        
+
         debug!(
             "Marked offset {} for topic {} partition {} for commit",
             offset, topic, partition
         );
     }
-    
+
     /// Commit pending offsets
     pub async fn commit_offsets<C: Consumer>(&self, consumer: &C) -> Result<(), KafkaError> {
         let mut pending = self.pending_offsets.lock().await;
-        
+
         if pending.is_empty() {
             return Ok(());
         }
-        
+
         let mut tpl = TopicPartitionList::new();
-        
+
         for ((topic, partition), offset) in pending.iter() {
             tpl.add_partition_offset(topic.as_str(), *partition, Offset::Offset(*offset + 1))?;
         }
-        
+
         debug!("Committing {} offsets", pending.len());
-        
+
         match consumer.commit(&tpl, rdkafka::consumer::CommitMode::Sync) {
             Ok(()) => {
                 info!("Successfully committed {} offsets", pending.len());
-                
+
                 // Move to committed offsets
                 let mut committed = self.committed_offsets.lock().await;
                 for (key, value) in pending.drain() {
                     committed.insert(key, value);
                 }
-                
+
                 Ok(())
             }
             Err(e) => {
@@ -102,25 +103,25 @@ impl OffsetManager {
             }
         }
     }
-    
+
     /// Get the last committed offset for a partition
     pub async fn get_committed_offset(&self, topic: &str, partition: i32) -> Option<i64> {
         let interned_topic = self.intern_topic(topic).await;
         let committed = self.committed_offsets.lock().await;
         committed.get(&(interned_topic, partition)).copied()
     }
-    
+
     /// Get pending offsets count
     pub async fn pending_count(&self) -> usize {
         let pending = self.pending_offsets.lock().await;
         pending.len()
     }
-    
+
     /// Check if we should commit based on batch size
     pub async fn should_commit(&self) -> bool {
         self.pending_count().await >= self.batch_size
     }
-    
+
     /// Reset all offsets (useful for testing)
     pub async fn reset(&self) {
         let mut pending = self.pending_offsets.lock().await;
@@ -128,17 +129,16 @@ impl OffsetManager {
         pending.clear();
         committed.clear();
     }
-    
+
     /// Get all pending offsets (for debugging)
     pub async fn get_pending_offsets(&self) -> HashMap<(String, i32), i64> {
         let pending = self.pending_offsets.lock().await;
-        pending.iter()
-            .map(|((topic, partition), offset)| {
-                ((topic.as_ref().clone(), *partition), *offset)
-            })
+        pending
+            .iter()
+            .map(|((topic, partition), offset)| ((topic.as_ref().clone(), *partition), *offset))
             .collect()
     }
-    
+
     /// Commit specific offsets
     pub async fn commit_specific<C: Consumer>(
         &self,
@@ -146,20 +146,20 @@ impl OffsetManager {
         offsets: Vec<(String, i32, i64)>,
     ) -> Result<(), KafkaError> {
         let mut tpl = TopicPartitionList::new();
-        
+
         for (topic, partition, offset) in &offsets {
             tpl.add_partition_offset(topic, *partition, Offset::Offset(*offset + 1))?;
         }
-        
+
         consumer.commit(&tpl, rdkafka::consumer::CommitMode::Sync)?;
-        
+
         // Update committed offsets
         let mut committed = self.committed_offsets.lock().await;
         for (topic, partition, offset) in offsets {
             let interned_topic = self.intern_topic(&topic).await;
             committed.insert((interned_topic, partition), offset);
         }
-        
+
         Ok(())
     }
 }
@@ -194,28 +194,28 @@ impl CommitStrategy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_offset_manager() {
         let manager = OffsetManager::new(10, std::time::Duration::from_secs(60));
-        
+
         // Mark some offsets
         manager.mark_offset("test-topic", 0, 100).await;
         manager.mark_offset("test-topic", 1, 200).await;
-        
+
         assert_eq!(manager.pending_count().await, 2);
-        
+
         // Check pending offsets
         let pending = manager.get_pending_offsets().await;
         assert_eq!(pending.get(&("test-topic".to_string(), 0)), Some(&100));
         assert_eq!(pending.get(&("test-topic".to_string(), 1)), Some(&200));
     }
-    
+
     #[test]
     fn test_commit_strategy() {
         let strategy = CommitStrategy::BatchOrInterval(100, std::time::Duration::from_secs(60));
         let start = std::time::Instant::now();
-        
+
         assert!(!strategy.should_commit(50, start));
         assert!(strategy.should_commit(100, start));
     }

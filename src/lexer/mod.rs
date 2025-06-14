@@ -1,18 +1,18 @@
 //! Lexical analysis module
 
-/// Token definitions and utilities
-pub mod token;
-/// Lexer state management
-pub mod state;
 /// Error types for lexer operations
 pub mod error;
+/// Lexer state management
+pub mod state;
+/// Token definitions and utilities
+pub mod token;
 
-pub use token::{Token, Item};
 pub use state::LexState;
+pub use token::{Item, Token};
 
+use crate::lexer::error::LexError;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration};
-use crate::lexer::error::LexError;
 
 /// Default channel buffer size for token emission
 pub const DEFAULT_CHANNEL_BUFFER: usize = 1000;
@@ -35,7 +35,7 @@ impl Lexer {
     pub fn new(input: &str) -> (Self, mpsc::Receiver<Item>) {
         Self::with_buffer_size(input, DEFAULT_CHANNEL_BUFFER)
     }
-    
+
     /// Create a new lexer with specified buffer size
     pub fn with_buffer_size(input: &str, buffer_size: usize) -> (Self, mpsc::Receiver<Item>) {
         let (tx, rx) = mpsc::channel(buffer_size);
@@ -51,9 +51,10 @@ impl Lexer {
 
     /// Start scanning the input asynchronously with default timeout
     pub async fn scan(self) -> Result<(), LexError> {
-        self.scan_with_timeout(Duration::from_secs(DEFAULT_LEXING_TIMEOUT_SECS)).await
+        self.scan_with_timeout(Duration::from_secs(DEFAULT_LEXING_TIMEOUT_SECS))
+            .await
     }
-    
+
     /// Start scanning the input asynchronously with specified timeout
     pub async fn scan_with_timeout(mut self, duration: Duration) -> Result<(), LexError> {
         timeout(duration, async move {
@@ -131,12 +132,13 @@ impl Lexer {
         // String interning is available via the pattern module if needed for optimization
         let value = self.collected().to_string();
         let item = Item::new(token, value);
-        self.items_tx.send(item).await
+        self.items_tx
+            .send(item)
+            .await
             .map_err(|e| LexError::ChannelClosed(format!("Failed to send token: {}", e)))?;
         self.ignore();
         Ok(())
     }
-
 }
 
 impl Drop for Lexer {
@@ -157,7 +159,7 @@ mod tests {
         assert_eq!(lexer.start, 0);
         assert_eq!(lexer.input, "test");
     }
-    
+
     #[tokio::test]
     async fn test_lexer_with_custom_buffer() {
         let (lexer, _rx) = Lexer::with_buffer_size("test", 100);
@@ -165,7 +167,7 @@ mod tests {
         assert_eq!(lexer.start, 0);
         assert_eq!(lexer.input, "test");
     }
-    
+
     #[tokio::test]
     async fn test_lexer_timeout() {
         // Create a very complex nested input that will take time to process
@@ -177,12 +179,12 @@ mod tests {
             complex_input.push_str("other) or ");
         }
         complex_input.push_str("final");
-        
+
         let (lexer, _rx) = Lexer::new(&complex_input);
-        
+
         // Use a very short timeout to ensure it triggers
         let result = lexer.scan_with_timeout(Duration::from_nanos(1)).await;
-        
+
         match result {
             Err(LexError::Timeout) => {
                 // Expected timeout error

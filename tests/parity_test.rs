@@ -1,7 +1,7 @@
 //! Test for feature parity with Go implementation
 
-use sigma_rs::{DynamicEvent, rule, RuleSet};
 use serde_json::json;
+use sigma_rs::{rule, DynamicEvent, RuleSet};
 use std::sync::Arc;
 
 #[tokio::test]
@@ -14,24 +14,24 @@ detection:
         CommandLine|contains: 'test\*escape'
     condition: selection
 "#;
-    
+
     let rule = rule::rule_from_yaml(yaml.as_bytes()).unwrap();
     let rule = Arc::new(rule);
     let tree = sigma_rs::tree::build_tree(rule).await.unwrap();
-    
+
     // This should match due to escape handling
     let event = DynamicEvent::new(json!({
         "CommandLine": "test*escape"
     }));
-    
+
     let (result, _) = tree.eval(&event).await;
     assert!(result.is_some(), "Should match with literal asterisk");
-    
+
     // This should not match - asterisk should be literal
     let event = DynamicEvent::new(json!({
-        "CommandLine": "testXXXescape" 
+        "CommandLine": "testXXXescape"
     }));
-    
+
     let (result, _) = tree.eval(&event).await;
     assert!(result.is_none(), "Should not match with wildcard expansion");
 }
@@ -46,24 +46,24 @@ detection:
         CommandLine|contains: 'cmd    shell'
     condition: selection
 "#;
-    
+
     let rule = rule::rule_from_yaml(yaml.as_bytes()).unwrap();
     let rule = Arc::new(rule);
     let tree = sigma_rs::tree::build_tree(rule).await.unwrap();
-    
+
     // This should match due to whitespace collapsing
     let event = DynamicEvent::new(json!({
         "CommandLine": "cmd shell"
     }));
-    
+
     let (result, _) = tree.eval(&event).await;
     assert!(result.is_some(), "Should match with single space");
-    
+
     // This should also match
     let event = DynamicEvent::new(json!({
         "CommandLine": "cmd  shell"
     }));
-    
+
     let (result, _) = tree.eval(&event).await;
     assert!(result.is_some(), "Should match with multiple spaces");
 }
@@ -78,24 +78,24 @@ detection:
         EventID: 4624
     condition: selection
 "#;
-    
+
     let rule = rule::rule_from_yaml(yaml.as_bytes()).unwrap();
     let rule = Arc::new(rule);
     let tree = sigma_rs::tree::build_tree(rule).await.unwrap();
-    
+
     // Test numeric value as string
     let event = DynamicEvent::new(json!({
         "EventID": "4624"
     }));
-    
+
     let (result, _) = tree.eval(&event).await;
     assert!(result.is_some(), "Should match with string representation");
-    
+
     // Test actual numeric value
     let event = DynamicEvent::new(json!({
         "EventID": 4624
     }));
-    
+
     let (result, _) = tree.eval(&event).await;
     assert!(result.is_some(), "Should match with numeric value");
 }
@@ -110,15 +110,15 @@ detection:
         CommandLine|contains: 'powershell'
     condition: selection
 "#;
-    
+
     let rule = rule::rule_from_yaml(yaml.as_bytes()).unwrap();
     let rule = Arc::new(rule);
     let tree = sigma_rs::tree::build_tree(rule).await.unwrap();
-    
+
     let event = DynamicEvent::new(json!({
         "CommandLine": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
     }));
-    
+
     let (result, _) = tree.eval(&event).await;
     assert!(result.is_some(), "Should match with contains modifier");
 }
@@ -127,7 +127,7 @@ detection:
 async fn test_ruleset_evaluation_parity() {
     // Test RuleSet functionality
     let mut ruleset = RuleSet::new();
-    
+
     let yaml1 = r#"
 title: Rule 1
 id: test-rule-1
@@ -136,7 +136,7 @@ detection:
         EventID: 1
     condition: selection
 "#;
-    
+
     let yaml2 = r#"
 title: Rule 2
 id: test-rule-2
@@ -145,18 +145,18 @@ detection:
         EventID: 4624
     condition: selection
 "#;
-    
+
     let rule1 = rule::rule_from_yaml(yaml1.as_bytes()).unwrap();
     let rule2 = rule::rule_from_yaml(yaml2.as_bytes()).unwrap();
-    
+
     ruleset.add_rule(rule1).await.unwrap();
     ruleset.add_rule(rule2).await.unwrap();
-    
+
     // Test event that matches rule2
     let event = DynamicEvent::new(json!({
         "EventID": 4624
     }));
-    
+
     let result = ruleset.evaluate(&event).await.unwrap();
     assert_eq!(result.matches.len(), 1);
     assert_eq!(result.matches[0].rule_id, "test-rule-2");

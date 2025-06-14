@@ -1,26 +1,23 @@
-/// Service layer with Tokio stack integration using Axum
-use std::sync::Arc;
-use tokio::task::JoinHandle;
-use tracing::{info, error};
-use axum::{
-    routing::{get, Router},
-    extract::{State, DefaultBodyLimit},
-    http::{StatusCode, Request, HeaderMap},
-    response::Json,
-    middleware::{self, Next},
-};
 use crate::{SigmaEngine, SigmaError};
+use axum::{
+    extract::{DefaultBodyLimit, State},
+    http::{HeaderMap, Request, StatusCode},
+    middleware::{self, Next},
+    response::Json,
+    routing::{get, Router},
+};
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use std::time::Duration;
-use tower_http::{
-    timeout::TimeoutLayer,
-    cors::CorsLayer,
-};
-use tower::limit::ConcurrencyLimitLayer;
-use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicU64, Ordering};
-use parking_lot::RwLock;
+/// Service layer with Tokio stack integration using Axum
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::task::JoinHandle;
+use tower::limit::ConcurrencyLimitLayer;
+use tower_http::{cors::CorsLayer, timeout::TimeoutLayer};
+use tracing::{error, info};
 
 /// Maximum request body size (1MB)
 const MAX_REQUEST_SIZE: usize = 1024 * 1024;
@@ -35,9 +32,7 @@ const MAX_CONCURRENT_REQUESTS: usize = 1000;
 static SERVICE_METRICS: Lazy<ServiceMetrics> = Lazy::new(ServiceMetrics::new);
 
 /// API key from environment variable (for demo purposes)
-static API_KEY: Lazy<Option<String>> = Lazy::new(|| {
-    std::env::var("SIGMA_API_KEY").ok()
-});
+static API_KEY: Lazy<Option<String>> = Lazy::new(|| std::env::var("SIGMA_API_KEY").ok());
 
 #[derive(Clone)]
 pub struct SigmaService {
@@ -104,7 +99,7 @@ impl ServiceMetrics {
         if matched {
             self.matches_found.fetch_add(1, Ordering::Relaxed);
         }
-        
+
         let mut durations = self.processing_durations.write();
         // Keep only last 1000 samples to prevent unbounded growth
         if durations.len() >= 1000 {
@@ -125,8 +120,8 @@ impl ServiceMetrics {
 
 impl SigmaService {
     pub fn new(engine: Arc<SigmaEngine>) -> Self {
-        Self { 
-            engine, 
+        Self {
+            engine,
             start_time: std::time::Instant::now(),
             #[cfg(feature = "metrics")]
             metrics_registry: None,
@@ -147,7 +142,7 @@ impl SigmaService {
             .route("/evaluate", axum::routing::post(Self::evaluate_handler))
             .layer(middleware::from_fn(Self::auth_middleware))
             .with_state(self.clone());
-        
+
         // Apply middleware layers
         app.layer(DefaultBodyLimit::max(MAX_REQUEST_SIZE))
             .layer(TimeoutLayer::new(DEFAULT_TIMEOUT))
@@ -193,7 +188,7 @@ impl SigmaService {
     async fn metrics_handler(State(service): State<SigmaService>) -> Json<MetricsResponse> {
         let metadata = service.engine.ruleset().get_metadata();
         SERVICE_METRICS.record_request(true);
-        
+
         Json(MetricsResponse {
             rules_loaded: metadata.enabled_rules,
             events_processed: SERVICE_METRICS.events_evaluated.load(Ordering::Relaxed),
@@ -202,7 +197,9 @@ impl SigmaService {
         })
     }
 
-    async fn list_rules_handler(State(service): State<SigmaService>) -> Result<Json<Vec<String>>, StatusCode> {
+    async fn list_rules_handler(
+        State(service): State<SigmaService>,
+    ) -> Result<Json<Vec<String>>, StatusCode> {
         // For now, return basic metadata. To implement full rule listing,
         // we'd need to expose rule details from the RuleSet
         let metadata = service.engine.ruleset().get_metadata();
@@ -219,36 +216,39 @@ impl SigmaService {
         Json(request): Json<EvaluateRequest>,
     ) -> Result<Json<serde_json::Value>, StatusCode> {
         let start_time = std::time::Instant::now();
-        
+
         // Validate event data
         if request.event.is_empty() {
             SERVICE_METRICS.record_request(false);
             return Err(StatusCode::BAD_REQUEST);
         }
-        
+
         // Create a DynamicEvent from the validated input
         let event = crate::event::DynamicEvent::new(serde_json::Value::Object(request.event));
-        
+
         // Evaluate the event against all rules
         match service.engine.process_event(event).await {
             Ok(result) => {
                 let has_matches = result.matches.iter().any(|m| m.matched);
                 let duration = start_time.elapsed();
-                
+
                 SERVICE_METRICS.record_request(true);
                 SERVICE_METRICS.record_evaluation(duration, has_matches);
-                
-                let matches: Vec<serde_json::Value> = result.matches
+
+                let matches: Vec<serde_json::Value> = result
+                    .matches
                     .iter()
                     .filter(|m| m.matched)
-                    .map(|m| serde_json::json!({
-                        "rule_id": m.rule_id,
-                        "rule_title": m.rule_title,
-                        "matched": m.matched,
-                        "evaluation_time_ms": m.evaluation_time.as_millis()
-                    }))
+                    .map(|m| {
+                        serde_json::json!({
+                            "rule_id": m.rule_id,
+                            "rule_title": m.rule_title,
+                            "matched": m.matched,
+                            "evaluation_time_ms": m.evaluation_time.as_millis()
+                        })
+                    })
                     .collect();
-                
+
                 Ok(Json(serde_json::json!({
                     "matched": has_matches,
                     "rules": matches,
@@ -259,28 +259,31 @@ impl SigmaService {
             Err(e) => {
                 error!("Event evaluation failed: {}", e);
                 SERVICE_METRICS.record_request(false);
-                
+
                 // Don't expose internal error details
                 match e {
                     SigmaError::ResourceLimitExceeded { .. } => Err(StatusCode::PAYLOAD_TOO_LARGE),
-                    _ => Err(StatusCode::INTERNAL_SERVER_ERROR)
+                    _ => Err(StatusCode::INTERNAL_SERVER_ERROR),
                 }
             }
         }
     }
 
-    pub async fn serve(self, addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    pub async fn serve(
+        self,
+        addr: SocketAddr,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let app = self.router();
-        
+
         info!("Starting Sigma service on {}", addr);
-        
+
         let listener = tokio::net::TcpListener::bind(addr).await?;
-        
+
         if let Err(e) = axum::serve(listener, app).await {
             error!("Server error: {}", e);
             return Err(e.into());
         }
-        
+
         Ok(())
     }
 }
@@ -295,20 +298,20 @@ impl HttpServer {
     pub fn new(engine: Arc<SigmaEngine>, addr: SocketAddr) -> Self {
         let service = SigmaService::new(engine);
         let app = service.router();
-        
+
         Self { app, addr }
     }
 
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         info!("Starting HTTP server on {}", self.addr);
-        
+
         let listener = tokio::net::TcpListener::bind(self.addr).await?;
-        
+
         if let Err(e) = axum::serve(listener, self.app).await {
             error!("Server error: {}", e);
             return Err(e.into());
         }
-        
+
         Ok(())
     }
 }
@@ -316,31 +319,30 @@ impl HttpServer {
 // gRPC server implementation with Tonic
 #[cfg(feature = "service")]
 pub mod grpc {
-    use std::sync::Arc;
-    use tonic::{transport::Server, Request, Response, Status};
-    use tracing::{info, error};
     use crate::{SigmaEngine, SigmaError};
     use std::net::SocketAddr;
-    
+    use std::sync::Arc;
+    use tonic::{transport::Server, Request, Response, Status};
+    use tracing::{error, info};
+
     // Generated protobuf code (will be generated by build.rs)
     pub mod sigma {
         tonic::include_proto!("sigma");
     }
-    
+
+    use futures::StreamExt;
     use sigma::{
         sigma_service_server::{SigmaService as SigmaServiceTrait, SigmaServiceServer},
         EvaluateEventRequest, EvaluateEventResponse, HealthRequest, HealthResponse,
-        MetricsRequest, MetricsResponse, ListRulesRequest, ListRulesResponse,
-        StreamEvaluateRequest, StreamEvaluateResponse,
-        RuleMatch, RuleSummary, PerformanceMetrics,
+        ListRulesRequest, ListRulesResponse, MetricsRequest, MetricsResponse, PerformanceMetrics,
+        RuleMatch, RuleSummary, StreamEvaluateRequest, StreamEvaluateResponse,
     };
-    use futures::StreamExt;
-    
+
     pub struct SigmaGrpcService {
         engine: Arc<SigmaEngine>,
         start_time: std::time::Instant,
     }
-    
+
     impl SigmaGrpcService {
         pub fn new(engine: Arc<SigmaEngine>) -> Self {
             Self {
@@ -349,7 +351,7 @@ pub mod grpc {
             }
         }
     }
-    
+
     #[tonic::async_trait]
     impl SigmaServiceTrait for SigmaGrpcService {
         async fn evaluate_event(
@@ -357,17 +359,18 @@ pub mod grpc {
             request: Request<EvaluateEventRequest>,
         ) -> Result<Response<EvaluateEventResponse>, Status> {
             let req = request.into_inner();
-            
+
             // Parse the JSON event
             let event_value: serde_json::Value = serde_json::from_str(&req.event_json)
                 .map_err(|e| Status::invalid_argument(format!("Invalid JSON: {}", e)))?;
-            
+
             let event = crate::event::DynamicEvent::new(event_value);
-            
+
             // Evaluate the event
             match self.engine.process_event(event).await {
                 Ok(result) => {
-                    let matches: Vec<RuleMatch> = result.matches
+                    let matches: Vec<RuleMatch> = result
+                        .matches
                         .iter()
                         .map(|m| RuleMatch {
                             rule_id: m.rule_id.clone(),
@@ -378,9 +381,9 @@ pub mod grpc {
                             metadata: std::collections::HashMap::new(),
                         })
                         .collect();
-                    
+
                     let has_matches = matches.iter().any(|m| m.matched);
-                    
+
                     Ok(Response::new(EvaluateEventResponse {
                         matched: has_matches,
                         matches,
@@ -395,7 +398,7 @@ pub mod grpc {
                     let sanitized_error = match e {
                         SigmaError::ResourceLimitExceeded { .. } => "Resource limit exceeded",
                         SigmaError::InvalidPattern(_) => "Invalid pattern",
-                        _ => "Internal processing error"
+                        _ => "Internal processing error",
                     };
                     Ok(Response::new(EvaluateEventResponse {
                         matched: false,
@@ -407,24 +410,30 @@ pub mod grpc {
                 }
             }
         }
-        
+
         async fn get_health(
             &self,
             _request: Request<HealthRequest>,
         ) -> Result<Response<HealthResponse>, Status> {
             let metadata = self.engine.ruleset().get_metadata();
             let uptime = self.start_time.elapsed().as_secs();
-            
+
             let status = if metadata.enabled_rules > 0 {
                 "healthy"
             } else {
                 "degraded"
             };
-            
+
             let mut details = std::collections::HashMap::new();
-            details.insert("rules_loaded".to_string(), metadata.enabled_rules.to_string());
-            details.insert("failed_rules".to_string(), metadata.failed_rules.to_string());
-            
+            details.insert(
+                "rules_loaded".to_string(),
+                metadata.enabled_rules.to_string(),
+            );
+            details.insert(
+                "failed_rules".to_string(),
+                metadata.failed_rules.to_string(),
+            );
+
             Ok(Response::new(HealthResponse {
                 status: status.to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
@@ -432,19 +441,19 @@ pub mod grpc {
                 details,
             }))
         }
-        
+
         async fn get_metrics(
             &self,
             _request: Request<MetricsRequest>,
         ) -> Result<Response<MetricsResponse>, Status> {
             let metadata = self.engine.ruleset().get_metadata();
-            
+
             Ok(Response::new(MetricsResponse {
                 rules_loaded: metadata.enabled_rules as u32,
-                events_processed: 0, // Would be tracked by metrics system
-                matches_found: 0,    // Would be tracked by metrics system
+                events_processed: 0,         // Would be tracked by metrics system
+                matches_found: 0,            // Would be tracked by metrics system
                 avg_processing_time_ms: 0.0, // Would be tracked by metrics system
-                memory_usage_bytes: 0, // Would be tracked by metrics system
+                memory_usage_bytes: 0,       // Would be tracked by metrics system
                 performance: Some(PerformanceMetrics {
                     events_per_second: 0.0,
                     p50_processing_time_ms: 0.0,
@@ -454,44 +463,46 @@ pub mod grpc {
                 }),
             }))
         }
-        
+
         async fn list_rules(
             &self,
             _request: Request<ListRulesRequest>,
         ) -> Result<Response<ListRulesResponse>, Status> {
             let metadata = self.engine.ruleset().get_metadata();
-            
+
             // For now, return basic rule summary
             // In a full implementation, we'd expose rule details from the RuleSet
-            let rules = vec![
-                RuleSummary {
-                    rule_id: "summary".to_string(),
-                    rule_title: format!("Loaded {} rules", metadata.enabled_rules),
-                    description: format!("Total: {}, Enabled: {}, Failed: {}", 
-                                       metadata.total_rules, metadata.enabled_rules, metadata.failed_rules),
-                    status: "enabled".to_string(),
-                    level: "info".to_string(),
-                    tags: vec!["summary".to_string()],
-                    last_modified: 0,
-                }
-            ];
-            
+            let rules = vec![RuleSummary {
+                rule_id: "summary".to_string(),
+                rule_title: format!("Loaded {} rules", metadata.enabled_rules),
+                description: format!(
+                    "Total: {}, Enabled: {}, Failed: {}",
+                    metadata.total_rules, metadata.enabled_rules, metadata.failed_rules
+                ),
+                status: "enabled".to_string(),
+                level: "info".to_string(),
+                tags: vec!["summary".to_string()],
+                last_modified: 0,
+            }];
+
             Ok(Response::new(ListRulesResponse {
                 rules,
                 next_page_token: String::new(),
                 total_count: metadata.total_rules as u32,
             }))
         }
-        
-        type StreamEvaluateStream = std::pin::Pin<Box<dyn tokio_stream::Stream<Item = Result<StreamEvaluateResponse, Status>> + Send>>;
-        
+
+        type StreamEvaluateStream = std::pin::Pin<
+            Box<dyn tokio_stream::Stream<Item = Result<StreamEvaluateResponse, Status>> + Send>,
+        >;
+
         async fn stream_evaluate(
             &self,
             request: Request<tonic::Streaming<StreamEvaluateRequest>>,
         ) -> Result<Response<Self::StreamEvaluateStream>, Status> {
             let mut stream = request.into_inner();
             let engine = Arc::clone(&self.engine);
-            
+
             let output_stream = async_stream::stream! {
                 while let Some(req) = stream.next().await {
                     match req {
@@ -500,7 +511,7 @@ pub mod grpc {
                             match serde_json::from_str::<serde_json::Value>(&request.event_json) {
                                 Ok(event_value) => {
                                     let event = crate::event::DynamicEvent::new(event_value);
-                                    
+
                                     // Evaluate
                                     match engine.process_event(event).await {
                                         Ok(result) => {
@@ -515,9 +526,9 @@ pub mod grpc {
                                                     metadata: std::collections::HashMap::new(),
                                                 })
                                                 .collect();
-                                            
+
                                             let has_matches = matches.iter().any(|m| m.matched);
-                                            
+
                                             yield Ok(StreamEvaluateResponse {
                                                 sequence: request.sequence,
                                                 result: Some(EvaluateEventResponse {
@@ -563,31 +574,31 @@ pub mod grpc {
                     }
                 }
             };
-            
+
             Ok(Response::new(Box::pin(output_stream)))
         }
     }
-    
+
     pub struct GrpcServer {
         addr: SocketAddr,
         engine: Arc<SigmaEngine>,
     }
-    
+
     impl GrpcServer {
         pub fn new(engine: Arc<SigmaEngine>, addr: SocketAddr) -> Self {
             Self { addr, engine }
         }
-        
+
         pub async fn run(self) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
             info!("Starting gRPC server on {}", self.addr);
-            
+
             let service = SigmaGrpcService::new(self.engine);
-            
+
             Server::builder()
                 .add_service(SigmaServiceServer::new(service))
                 .serve(self.addr)
                 .await?;
-            
+
             Ok(())
         }
     }
@@ -628,23 +639,19 @@ impl ServiceRunner {
 
     pub async fn run(mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         if let Some(http) = self.http_server.take() {
-            let handle = tokio::spawn(async move {
-                http.run().await
-            });
+            let handle = tokio::spawn(async move { http.run().await });
             self.handles.push(handle);
         }
 
         #[cfg(feature = "service")]
         if let Some(grpc) = self.grpc_server.take() {
-            let handle = tokio::spawn(async move {
-                grpc.run().await
-            });
+            let handle = tokio::spawn(async move { grpc.run().await });
             self.handles.push(handle);
         }
 
         // Set up graceful shutdown
         let shutdown = tokio::signal::ctrl_c();
-        
+
         // Wait for either shutdown signal or server error
         tokio::select! {
             _ = shutdown => {
@@ -688,29 +695,34 @@ impl MetricsService {
         Self { registry }
     }
 
-    pub async fn serve(self, addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        use axum::response::Response;
+    pub async fn serve(
+        self,
+        addr: SocketAddr,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         use axum::body::Body;
+        use axum::response::Response;
         use prometheus::{Encoder, TextEncoder};
-        
-        let app = Router::new()
-            .route("/metrics", get(move || async move {
+
+        let app = Router::new().route(
+            "/metrics",
+            get(move || async move {
                 let mut buffer = vec![];
                 let encoder = TextEncoder::new();
                 let metric_families = self.registry.gather();
                 encoder.encode(&metric_families, &mut buffer).unwrap();
-                
+
                 Response::builder()
                     .header("Content-Type", encoder.format_type())
                     .body(Body::from(buffer))
                     .unwrap()
-            }));
+            }),
+        );
 
         info!("Starting metrics server on {}", addr);
-        
+
         let listener = tokio::net::TcpListener::bind(addr).await?;
         axum::serve(listener, app).await?;
-        
+
         Ok(())
     }
 }
@@ -725,7 +737,9 @@ impl HealthCheckService {
         Self { engine }
     }
 
-    pub async fn check(&self) -> Result<HealthResponse, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    pub async fn check(
+        &self,
+    ) -> Result<HealthResponse, Box<dyn std::error::Error + Send + Sync + 'static>> {
         // Basic health check - verify engine has rules loaded
         let metadata = self.engine.ruleset().get_metadata();
         let status = if metadata.enabled_rules > 0 {
@@ -733,7 +747,7 @@ impl HealthCheckService {
         } else {
             "degraded" // No rules loaded
         };
-        
+
         Ok(HealthResponse {
             status: status.to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -745,19 +759,19 @@ impl HealthCheckService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SigmaEngineBuilder;
     use axum::body::Body;
-    use axum::http::{Request, Method};
-    use tower::ServiceExt;
+    use axum::http::{Method, Request};
     use std::sync::Arc;
     use tempfile::TempDir;
-    use crate::SigmaEngineBuilder;
-    
+    use tower::ServiceExt;
+
     // Helper function to create a test engine
     async fn create_test_engine() -> Arc<SigmaEngine> {
         let temp_dir = TempDir::new().unwrap();
         let rules_dir = temp_dir.path().join("rules");
         std::fs::create_dir(&rules_dir).unwrap();
-        
+
         // Create a simple test rule
         let rule_content = r#"
 title: Test Rule
@@ -770,19 +784,18 @@ detection:
     condition: keywords
 "#;
         std::fs::write(rules_dir.join("test.yml"), rule_content).unwrap();
-        
-        let builder = SigmaEngineBuilder::new()
-            .add_rule_dir(rules_dir.to_string_lossy());
+
+        let builder = SigmaEngineBuilder::new().add_rule_dir(rules_dir.to_string_lossy());
         let engine = builder.build().await.unwrap();
         Arc::new(engine)
     }
-    
+
     #[tokio::test]
     async fn test_health_endpoint() {
         let engine = create_test_engine().await;
         let service = SigmaService::new(engine);
         let app = service.router();
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -793,23 +806,25 @@ detection:
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
-        
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let health: HealthResponse = serde_json::from_slice(&body).unwrap();
-        
+
         assert_eq!(health.status, "healthy");
         assert!(!health.version.is_empty());
         assert!(health.uptime_seconds >= 0);
     }
-    
+
     #[tokio::test]
     async fn test_metrics_endpoint() {
         let engine = create_test_engine().await;
         let service = SigmaService::new(engine);
         let app = service.router();
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -820,24 +835,26 @@ detection:
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
-        
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let metrics: MetricsResponse = serde_json::from_slice(&body).unwrap();
-        
+
         assert_eq!(metrics.rules_loaded, 1);
         assert!(metrics.events_processed >= 0);
         assert!(metrics.matches_found >= 0);
         assert!(metrics.processing_time_ms >= 0.0);
     }
-    
+
     #[tokio::test]
     async fn test_rules_endpoint() {
         let engine = create_test_engine().await;
         let service = SigmaService::new(engine);
         let app = service.router();
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -848,28 +865,30 @@ detection:
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
-        
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let rules: Vec<String> = serde_json::from_slice(&body).unwrap();
-        
+
         assert!(!rules.is_empty());
         assert!(rules[0].contains("Total rules:"));
     }
-    
+
     #[tokio::test]
     async fn test_evaluate_endpoint_success() {
         let engine = create_test_engine().await;
         let service = SigmaService::new(engine);
         let app = service.router();
-        
+
         let event_data = serde_json::json!({
             "event": {
                 "message": "test event"
             }
         });
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -881,26 +900,28 @@ detection:
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
-        
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        
+
         assert!(result["matched"].is_boolean());
         assert!(result["rules"].is_array());
         assert!(result["total_rules_evaluated"].is_number());
         assert!(result["evaluation_time_ms"].is_number());
     }
-    
+
     #[tokio::test]
     async fn test_evaluate_endpoint_empty_event() {
         let engine = create_test_engine().await;
         let service = SigmaService::new(engine);
         let app = service.router();
-        
+
         let event_data = serde_json::json!({});
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -912,19 +933,19 @@ detection:
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
-    
+
     #[tokio::test]
     async fn test_api_key_authentication() {
         // Set API key for testing
         std::env::set_var("SIGMA_API_KEY", "test-api-key");
-        
+
         let engine = create_test_engine().await;
         let service = SigmaService::new(engine);
         let app = service.router();
-        
+
         // Test without API key - should fail
         let response = app
             .clone()
@@ -937,9 +958,9 @@ detection:
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        
+
         // Test with correct API key - should succeed
         let response = app
             .clone()
@@ -953,9 +974,9 @@ detection:
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
-        
+
         // Test with wrong API key - should fail
         let response = app
             .oneshot(
@@ -968,22 +989,22 @@ detection:
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        
+
         // Clean up
         std::env::remove_var("SIGMA_API_KEY");
     }
-    
+
     #[tokio::test]
     async fn test_health_endpoint_bypasses_auth() {
         // Set API key for testing
         std::env::set_var("SIGMA_API_KEY", "test-api-key");
-        
+
         let engine = create_test_engine().await;
         let service = SigmaService::new(engine);
         let app = service.router();
-        
+
         // Health endpoint should work without API key
         let response = app
             .oneshot(
@@ -995,26 +1016,26 @@ detection:
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
-        
+
         // Clean up
         std::env::remove_var("SIGMA_API_KEY");
     }
-    
+
     #[tokio::test]
     async fn test_request_size_limit() {
         let engine = create_test_engine().await;
         let service = SigmaService::new(engine);
         let app = service.router();
-        
+
         // Create a request body larger than MAX_REQUEST_SIZE
         let large_event = serde_json::json!({
             "event": {
                 "data": "x".repeat(2 * 1024 * 1024) // 2MB
             }
         });
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -1026,17 +1047,17 @@ detection:
             )
             .await
             .unwrap();
-        
+
         // Should be rejected due to size limit
         assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
-    
+
     #[tokio::test]
     async fn test_invalid_json() {
         let engine = create_test_engine().await;
         let service = SigmaService::new(engine);
         let app = service.router();
-        
+
         let response = app
             .oneshot(
                 Request::builder()
@@ -1048,28 +1069,28 @@ detection:
             )
             .await
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
-    
+
     #[tokio::test]
     async fn test_metrics_tracking() {
         let engine = create_test_engine().await;
         let service = SigmaService::new(engine);
         let app = service.router();
-        
+
         // Reset metrics
         SERVICE_METRICS.requests_total.store(0, Ordering::Relaxed);
         SERVICE_METRICS.requests_success.store(0, Ordering::Relaxed);
         SERVICE_METRICS.requests_failed.store(0, Ordering::Relaxed);
-        
+
         // Make a successful request
         let event_data = serde_json::json!({
             "event": {
                 "message": "test"
             }
         });
-        
+
         let _ = app
             .clone()
             .oneshot(
@@ -1082,11 +1103,11 @@ detection:
             )
             .await
             .unwrap();
-        
+
         assert_eq!(SERVICE_METRICS.requests_total.load(Ordering::Relaxed), 1);
         assert_eq!(SERVICE_METRICS.requests_success.load(Ordering::Relaxed), 1);
         assert_eq!(SERVICE_METRICS.events_evaluated.load(Ordering::Relaxed), 1);
-        
+
         // Make a failed request
         let _ = app
             .oneshot(
@@ -1099,49 +1120,52 @@ detection:
             )
             .await
             .unwrap();
-        
+
         assert_eq!(SERVICE_METRICS.requests_total.load(Ordering::Relaxed), 2);
         assert_eq!(SERVICE_METRICS.requests_failed.load(Ordering::Relaxed), 1);
     }
-    
+
     #[cfg(feature = "service")]
     #[tokio::test]
     async fn test_grpc_health_endpoint() {
+        use grpc::sigma::{sigma_service_server::SigmaService as GrpcSigmaService, HealthRequest};
         use tonic::Request;
-        use grpc::sigma::{HealthRequest, sigma_service_server::SigmaService as GrpcSigmaService};
-        
+
         let engine = create_test_engine().await;
         let service = grpc::SigmaGrpcService::new(engine);
-        
+
         let request = Request::new(HealthRequest {});
         let response = service.get_health(request).await.unwrap();
         let health = response.into_inner();
-        
+
         assert!(!health.status.is_empty());
         assert!(!health.version.is_empty());
         assert!(health.uptime_seconds >= 0);
     }
-    
+
     #[cfg(feature = "service")]
     #[tokio::test]
     async fn test_grpc_evaluate_endpoint() {
+        use grpc::sigma::{
+            sigma_service_server::SigmaService as GrpcSigmaService, EvaluateEventRequest,
+        };
         use tonic::Request;
-        use grpc::sigma::{EvaluateEventRequest, sigma_service_server::SigmaService as GrpcSigmaService};
-        
+
         let engine = create_test_engine().await;
         let service = grpc::SigmaGrpcService::new(engine);
-        
+
         let event_json = serde_json::json!({
             "message": "test event"
-        }).to_string();
-        
-        let request = Request::new(EvaluateEventRequest { 
+        })
+        .to_string();
+
+        let request = Request::new(EvaluateEventRequest {
             event_json,
-            rule_ids: vec![]
+            rule_ids: vec![],
         });
         let response = service.evaluate_event(request).await.unwrap();
         let result = response.into_inner();
-        
+
         assert!(!result.error.is_empty() || result.rules_evaluated > 0);
     }
 }

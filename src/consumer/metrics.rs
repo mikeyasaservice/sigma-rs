@@ -1,10 +1,10 @@
 //! Consumer metrics collection
 
+use parking_lot::RwLock;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use parking_lot::RwLock;
-use std::collections::HashMap;
 
 /// Efficient circular buffer for storing duration metrics with fixed memory footprint
 #[derive(Debug)]
@@ -52,9 +52,9 @@ impl<T: Clone + Default> CircularBuffer<T> {
     }
 
     /// Get a sorted copy of all current items
-    fn to_sorted_vec(&self) -> Vec<T> 
-    where 
-        T: Ord 
+    fn to_sorted_vec(&self) -> Vec<T>
+    where
+        T: Ord,
     {
         let mut items = Vec::with_capacity(self.size);
         if self.size == 0 {
@@ -129,9 +129,13 @@ impl ConsumerMetrics {
             messages_dlq: Arc::new(AtomicU64::new(0)),
             dlq_failures: Arc::new(AtomicU64::new(0)),
             consumer_lag: Arc::new(AtomicU64::new(0)),
-            processing_durations: Arc::new(RwLock::new(CircularBuffer::new(Self::MAX_DURATION_SAMPLES))),
+            processing_durations: Arc::new(RwLock::new(CircularBuffer::new(
+                Self::MAX_DURATION_SAMPLES,
+            ))),
             batch_durations: Arc::new(RwLock::new(CircularBuffer::new(Self::MAX_DURATION_SAMPLES))),
-            commit_durations: Arc::new(RwLock::new(CircularBuffer::new(Self::MAX_DURATION_SAMPLES))),
+            commit_durations: Arc::new(RwLock::new(CircularBuffer::new(
+                Self::MAX_DURATION_SAMPLES,
+            ))),
             error_counts: Arc::new(RwLock::new(HashMap::new())),
             partition_lag: Arc::new(RwLock::new(HashMap::new())),
             last_offset: Arc::new(RwLock::new(HashMap::new())),
@@ -142,100 +146,100 @@ impl ConsumerMetrics {
             last_reset: Arc::new(RwLock::new(now)),
         }
     }
-    
+
     /// Record a consumed message
     pub fn increment_consumed(&self) {
         self.messages_consumed.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     /// Record a processed message
     pub fn increment_processed(&self) {
         self.messages_processed.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     /// Record a failed message
     pub fn increment_failed(&self) {
         self.messages_failed.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     /// Record a message sent to DLQ
     pub fn increment_dlq(&self) {
         self.messages_dlq.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     /// Record a DLQ send failure
     pub fn increment_dlq_failures(&self) {
         self.dlq_failures.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     /// Update consumer lag
     pub fn set_lag(&self, lag: u64) {
         self.consumer_lag.store(lag, Ordering::Relaxed);
     }
-    
+
     /// Update partition lag
     pub fn set_partition_lag(&self, topic: String, partition: i32, lag: i64) {
         let mut partition_lag = self.partition_lag.write();
         partition_lag.insert((topic, partition), lag);
     }
-    
+
     /// Update last offset for partition
     pub fn set_last_offset(&self, topic: String, partition: i32, offset: i64) {
         let mut last_offset = self.last_offset.write();
         last_offset.insert((topic, partition), offset);
     }
-    
+
     /// Update high water mark for partition
     pub fn set_high_water_mark(&self, topic: String, partition: i32, hwm: i64) {
         let mut high_water_mark = self.high_water_mark.write();
         high_water_mark.insert((topic.clone(), partition), hwm);
-        
+
         // Calculate lag
         if let Some(last) = self.last_offset.read().get(&(topic.clone(), partition)) {
             let lag = hwm - last;
             self.set_partition_lag(topic, partition, lag);
         }
     }
-    
+
     /// Record a rebalance event
     pub fn increment_rebalance(&self) {
         self.rebalance_count.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     /// Record a connection error
     pub fn increment_connection_error(&self) {
         self.connection_errors.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     /// Record processing duration (O(1) operation with fixed memory)
     pub fn record_processing_duration(&self, duration: Duration) {
         let mut durations = self.processing_durations.write();
         durations.push(duration);
     }
-    
+
     /// Record batch processing duration (O(1) operation with fixed memory)
     pub fn record_batch_duration(&self, duration: Duration) {
         let mut durations = self.batch_durations.write();
         durations.push(duration);
     }
-    
+
     /// Record commit duration (O(1) operation with fixed memory)
     pub fn record_commit_duration(&self, duration: Duration) {
         let mut durations = self.commit_durations.write();
         durations.push(duration);
     }
-    
+
     /// Record an error
     pub fn record_error(&self, error_type: &str) {
         let mut errors = self.error_counts.write();
         *errors.entry(error_type.to_string()).or_insert(0) += 1;
     }
-    
+
     /// Get processing statistics
     pub fn processing_stats(&self) -> ProcessingStats {
         self.calculate_stats(&self.processing_durations)
     }
-    
+
     /// Get commit statistics
     pub fn commit_stats(&self) -> Option<ProcessingStats> {
         let stats = self.calculate_stats(&self.commit_durations);
@@ -245,7 +249,7 @@ impl ConsumerMetrics {
             None
         }
     }
-    
+
     /// Get batch processing statistics
     pub fn batch_stats(&self) -> Option<ProcessingStats> {
         let stats = self.calculate_stats(&self.batch_durations);
@@ -255,34 +259,37 @@ impl ConsumerMetrics {
             None
         }
     }
-    
+
     /// Calculate statistics for a duration collection
-    fn calculate_stats(&self, durations_lock: &Arc<RwLock<CircularBuffer<Duration>>>) -> ProcessingStats {
+    fn calculate_stats(
+        &self,
+        durations_lock: &Arc<RwLock<CircularBuffer<Duration>>>,
+    ) -> ProcessingStats {
         let durations = durations_lock.read();
         if durations.is_empty() {
             return ProcessingStats::default();
         }
-        
+
         let sorted = durations.to_sorted_vec();
         if sorted.is_empty() {
             return ProcessingStats::default();
         }
-        
+
         let p50_idx = sorted.len() / 2;
         let p95_idx = ((sorted.len() - 1) as f64 * 0.95) as usize;
         let p99_idx = ((sorted.len() - 1) as f64 * 0.99) as usize;
-        
+
         ProcessingStats {
             count: sorted.len(),
             p50: sorted[p50_idx],
             p95: sorted[p95_idx],
             p99: sorted[p99_idx],
             mean: Duration::from_nanos(
-                sorted.iter().map(|d| d.as_nanos()).sum::<u128>() as u64 / sorted.len() as u64
+                sorted.iter().map(|d| d.as_nanos()).sum::<u128>() as u64 / sorted.len() as u64,
             ),
         }
     }
-    
+
     /// Get messages per second
     pub fn messages_per_second(&self) -> f64 {
         let elapsed = self.start_time.elapsed().as_secs_f64();
@@ -292,37 +299,37 @@ impl ConsumerMetrics {
             0.0
         }
     }
-    
+
     /// Get success rate
     pub fn success_rate(&self) -> f64 {
         let total = self.messages_consumed.load(Ordering::Relaxed);
         let processed = self.messages_processed.load(Ordering::Relaxed);
-        
+
         if total > 0 {
             processed as f64 / total as f64
         } else {
             0.0
         }
     }
-    
+
     /// Get overall consumer lag
     pub fn total_lag(&self) -> i64 {
         let partition_lag = self.partition_lag.read();
         partition_lag.values().sum()
     }
-    
+
     /// Get lag by topic
     pub fn lag_by_topic(&self) -> HashMap<String, i64> {
         let partition_lag = self.partition_lag.read();
         let mut topic_lag = HashMap::new();
-        
+
         for ((topic, _), lag) in partition_lag.iter() {
             *topic_lag.entry(topic.clone()).or_insert(0) += lag;
         }
-        
+
         topic_lag
     }
-    
+
     /// Reset metrics (useful for testing)
     pub fn reset(&self) {
         self.messages_consumed.store(0, Ordering::Relaxed);
@@ -333,7 +340,7 @@ impl ConsumerMetrics {
         self.consumer_lag.store(0, Ordering::Relaxed);
         self.rebalance_count.store(0, Ordering::Relaxed);
         self.connection_errors.store(0, Ordering::Relaxed);
-        
+
         self.processing_durations.write().clear();
         self.batch_durations.write().clear();
         self.commit_durations.write().clear();
@@ -341,14 +348,14 @@ impl ConsumerMetrics {
         self.partition_lag.write().clear();
         self.last_offset.write().clear();
         self.high_water_mark.write().clear();
-        
+
         *self.last_reset.write() = Instant::now();
     }
-    
+
     /// Export metrics in Prometheus format
     pub fn export_prometheus(&self) -> String {
         let mut output = String::new();
-        
+
         // Counters
         output.push_str(&format!(
             "# HELP sigma_consumer_messages_total Total messages consumed\n\
@@ -362,7 +369,7 @@ impl ConsumerMetrics {
             self.messages_failed.load(Ordering::Relaxed),
             self.messages_dlq.load(Ordering::Relaxed),
         ));
-        
+
         // Gauge - overall lag
         output.push_str(&format!(
             "# HELP sigma_consumer_lag Current consumer lag\n\
@@ -370,12 +377,12 @@ impl ConsumerMetrics {
              sigma_consumer_lag {}\n",
             self.consumer_lag.load(Ordering::Relaxed),
         ));
-        
+
         // Partition-specific metrics
         let partition_lag = self.partition_lag.read();
         let last_offset = self.last_offset.read();
         let high_water_mark = self.high_water_mark.read();
-        
+
         // Partition lag
         if !partition_lag.is_empty() {
             output.push_str("# HELP sigma_consumer_partition_lag Lag per partition\n");
@@ -387,21 +394,21 @@ impl ConsumerMetrics {
                 ));
             }
         }
-        
+
         for ((topic, partition), offset) in last_offset.iter() {
             output.push_str(&format!(
                 "sigma_consumer_partition_offset {{topic=\"{}\", partition=\"{}\"}} {}\n",
                 topic, partition, offset
             ));
         }
-        
+
         for ((topic, partition), hwm) in high_water_mark.iter() {
             output.push_str(&format!(
                 "sigma_consumer_partition_high_water_mark {{topic=\"{}\", partition=\"{}\"}} {}\n",
                 topic, partition, hwm
             ));
         }
-        
+
         // Rebalance and connection metrics
         output.push_str(&format!(
             "# HELP sigma_consumer_rebalances_total Total rebalance events\n\
@@ -409,14 +416,14 @@ impl ConsumerMetrics {
              sigma_consumer_rebalances_total {}\n",
             self.rebalance_count.load(Ordering::Relaxed),
         ));
-        
+
         output.push_str(&format!(
             "# HELP sigma_consumer_connection_errors_total Total connection errors\n\
              # TYPE sigma_consumer_connection_errors_total counter\n\
              sigma_consumer_connection_errors_total {}\n",
             self.connection_errors.load(Ordering::Relaxed),
         ));
-        
+
         // Error breakdown
         let error_counts = self.error_counts.read();
         output.push_str("# HELP sigma_consumer_errors_by_type Errors by type\n");
@@ -427,7 +434,7 @@ impl ConsumerMetrics {
                 error_type, count
             ));
         }
-        
+
         // Histogram - processing duration
         let stats = self.processing_stats();
         output.push_str(&format!(
@@ -448,7 +455,7 @@ impl ConsumerMetrics {
             stats.sum().as_secs_f64(),
             stats.count,
         ));
-        
+
         // Commit duration histogram
         if let Some(commit_stats) = self.commit_stats() {
             output.push_str(&format!(
@@ -468,7 +475,7 @@ impl ConsumerMetrics {
                 commit_stats.count,
             ));
         }
-        
+
         // Runtime info
         let uptime = self.start_time.elapsed().as_secs();
         output.push_str(&format!(
@@ -477,7 +484,7 @@ impl ConsumerMetrics {
              sigma_consumer_uptime_seconds {}\n",
             uptime
         ));
-        
+
         output
     }
 }
@@ -506,12 +513,12 @@ impl ProcessingStats {
             self.count
         }
     }
-    
+
     /// Sum of all durations
     pub fn sum(&self) -> Duration {
         self.mean * self.count as u32
     }
-    
+
     /// Check if stats are empty
     pub fn is_empty(&self) -> bool {
         self.count == 0
@@ -527,89 +534,89 @@ impl Default for ConsumerMetrics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_basic_metrics() {
         let metrics = ConsumerMetrics::new();
-        
+
         metrics.increment_consumed();
         metrics.increment_processed();
         metrics.record_processing_duration(Duration::from_millis(10));
-        
+
         assert_eq!(metrics.messages_consumed.load(Ordering::Relaxed), 1);
         assert_eq!(metrics.messages_processed.load(Ordering::Relaxed), 1);
         assert_eq!(metrics.success_rate(), 1.0);
     }
-    
+
     #[test]
     fn test_partition_metrics() {
         let metrics = ConsumerMetrics::new();
-        
+
         // Record partition-level metrics
         metrics.set_partition_lag("topic1".to_string(), 0, 100);
         metrics.set_partition_lag("topic1".to_string(), 1, 200);
         metrics.set_partition_lag("topic2".to_string(), 0, 50);
-        
+
         let lag = metrics.partition_lag.read();
         assert_eq!(*lag.get(&("topic1".to_string(), 0)).unwrap(), 100);
         assert_eq!(*lag.get(&("topic1".to_string(), 1)).unwrap(), 200);
         assert_eq!(*lag.get(&("topic2".to_string(), 0)).unwrap(), 50);
     }
-    
+
     #[test]
     fn test_error_tracking() {
         let metrics = ConsumerMetrics::new();
-        
+
         metrics.record_error("kafka_error");
         metrics.record_error("processing_error");
         metrics.record_error("kafka_error");
-        
+
         let errors = metrics.error_counts.read();
         assert_eq!(*errors.get("kafka_error").unwrap(), 2);
         assert_eq!(*errors.get("processing_error").unwrap(), 1);
     }
-    
+
     #[test]
     fn test_rate_calculations() {
         let metrics = ConsumerMetrics::new();
-        
+
         // Simulate consuming messages
         for _ in 0..100 {
             metrics.increment_consumed();
         }
-        
+
         // Since we don't have a way to mock time, just verify the counter
         assert_eq!(metrics.messages_consumed.load(Ordering::Relaxed), 100);
-        
+
         // Test messages per second (will be 0 without time passing)
         assert!(metrics.messages_per_second() >= 0.0);
     }
-    
+
     #[test]
     fn test_processing_stats() {
         let metrics = ConsumerMetrics::new();
-        
+
         // Record various processing durations
         metrics.record_processing_duration(Duration::from_millis(10));
         metrics.record_processing_duration(Duration::from_millis(20));
         metrics.record_processing_duration(Duration::from_millis(30));
         metrics.record_processing_duration(Duration::from_millis(40));
         metrics.record_processing_duration(Duration::from_millis(50));
-        
+
         let stats = metrics.processing_stats();
         assert_eq!(stats.count, 5);
         let mean_millis = stats.mean.as_millis() as i128;
         assert!((mean_millis - 30).abs() < 5); // approximately 30ms
-        // Check percentiles make sense
+                                               // Check percentiles make sense
         assert!(stats.p50 >= Duration::from_millis(10));
         assert!(stats.p99 >= Duration::from_millis(30));
         assert!(stats.p99 <= Duration::from_millis(50));
     }
-    
+
     #[test]
     fn test_prometheus_export() {
         let metrics = ConsumerMetrics::new();
-        
+
         // Set up some metrics
         metrics.increment_consumed();
         metrics.increment_processed();
@@ -622,44 +629,45 @@ mod tests {
         metrics.set_partition_lag("test-topic".to_string(), 0, 100);
         metrics.record_commit_duration(Duration::from_millis(5));
         metrics.record_error("test_error");
-        
+
         let output = metrics.export_prometheus();
-        
+
         // Verify Prometheus format
         assert!(output.contains("# TYPE sigma_consumer_messages_total counter"));
         assert!(output.contains("# TYPE sigma_consumer_lag gauge"));
         assert!(output.contains("# TYPE sigma_consumer_partition_lag gauge"));
         assert!(output.contains("# TYPE sigma_consumer_errors_by_type counter"));
-        
+
         // Verify values
         assert!(output.contains("sigma_consumer_messages_total {status=\"consumed\"} 1"));
         assert!(output.contains("sigma_consumer_messages_total {status=\"processed\"} 1"));
         assert!(output.contains("sigma_consumer_messages_total {status=\"failed\"} 1"));
-        assert!(output.contains("sigma_consumer_partition_lag {topic=\"test-topic\", partition=\"0\"} 100"));
+        assert!(output
+            .contains("sigma_consumer_partition_lag {topic=\"test-topic\", partition=\"0\"} 100"));
     }
-    
+
     #[test]
     fn test_commit_tracking() {
         let metrics = ConsumerMetrics::new();
-        
+
         // Track commit operations
         for i in 1..=5 {
             metrics.record_commit_duration(Duration::from_millis(i * 10));
         }
-        
+
         // Duration distribution should have been updated
         assert_eq!(metrics.messages_consumed.load(Ordering::Relaxed), 0); // No messages consumed
-        // Note: We can't directly test distribution without exposing internals
+                                                                          // Note: We can't directly test distribution without exposing internals
     }
-    
+
     #[test]
     fn test_thread_safety() {
-        use std::thread;
         use std::sync::Arc;
-        
+        use std::thread;
+
         let metrics = Arc::new(ConsumerMetrics::new());
         let mut handles = vec![];
-        
+
         // Spawn multiple threads updating metrics
         for _ in 0..10 {
             let m = metrics.clone();
@@ -671,35 +679,35 @@ mod tests {
             });
             handles.push(handle);
         }
-        
+
         // Wait for all threads
         for handle in handles {
             handle.join().unwrap();
         }
-        
+
         // Verify totals
         assert_eq!(metrics.messages_consumed.load(Ordering::Relaxed), 1000);
         assert_eq!(metrics.messages_processed.load(Ordering::Relaxed), 1000);
     }
-    
+
     #[test]
     fn test_rebalance_tracking() {
         let metrics = ConsumerMetrics::new();
-        
+
         metrics.increment_rebalance();
         metrics.increment_rebalance();
-        
+
         assert_eq!(metrics.rebalance_count.load(Ordering::Relaxed), 2);
     }
-    
+
     #[test]
     fn test_connection_errors() {
         let metrics = ConsumerMetrics::new();
-        
+
         metrics.increment_connection_error();
         metrics.increment_connection_error();
         metrics.increment_connection_error();
-        
+
         assert_eq!(metrics.connection_errors.load(Ordering::Relaxed), 3);
     }
 }

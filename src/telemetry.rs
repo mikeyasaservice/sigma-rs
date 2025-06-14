@@ -3,8 +3,11 @@
 //! This module provides OpenTelemetry support for sigma-rs, enabling
 //! distributed tracing across your security event processing pipeline.
 
+use anyhow::Result;
 #[cfg(feature = "telemetry")]
-use opentelemetry::{global, runtime::TokioCurrentThread, sdk::propagation::TraceContextPropagator};
+use opentelemetry::{
+    global, runtime::TokioCurrentThread, sdk::propagation::TraceContextPropagator,
+};
 #[cfg(feature = "telemetry")]
 use opentelemetry_otlp::WithExportConfig;
 #[cfg(feature = "telemetry")]
@@ -13,14 +16,13 @@ use opentelemetry_sdk::{
     Resource,
 };
 #[cfg(feature = "telemetry")]
-use opentelemetry_semantic_conventions::{
-    resource::{SERVICE_NAME, SERVICE_VERSION, DEPLOYMENT_ENVIRONMENT},
+use opentelemetry_semantic_conventions::resource::{
+    DEPLOYMENT_ENVIRONMENT, SERVICE_NAME, SERVICE_VERSION,
 };
 #[cfg(feature = "telemetry")]
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
-#[cfg(feature = "telemetry")]
 use tracing_opentelemetry::OpenTelemetryLayer;
-use anyhow::Result;
+#[cfg(feature = "telemetry")]
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 
 /// OpenTelemetry configuration
 #[derive(Debug, Clone)]
@@ -114,8 +116,7 @@ pub fn init_telemetry_from_env() -> Result<()> {
     let config = TelemetryConfig {
         endpoint: std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
             .unwrap_or_else(|_| "http://localhost:4317".to_string()),
-        service_name: std::env::var("OTEL_SERVICE_NAME")
-            .unwrap_or_else(|_| "sigma-rs".to_string()),
+        service_name: std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "sigma-rs".to_string()),
         service_version: std::env::var("OTEL_SERVICE_VERSION")
             .unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string()),
         environment: std::env::var("DEPLOYMENT_ENVIRONMENT")

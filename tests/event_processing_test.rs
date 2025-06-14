@@ -1,12 +1,12 @@
 //! Tests for event processing with real log samples
 
+use serde_json::json;
 use sigma_rs::{
-    event::{Event, WindowsEvent, SysmonEvent, LinuxAuditEvent},
-    rule::rule_from_yaml,
+    event::{Event, LinuxAuditEvent, SysmonEvent, WindowsEvent},
     matcher::RuleMatcher,
     parser::Parser,
+    rule::rule_from_yaml,
 };
-use serde_json::json;
 use std::collections::HashMap;
 
 // Real Windows Security Event Log sample
@@ -118,10 +118,10 @@ detection:
         EventData.TargetUserName|endswith: '$'
     condition: selection and not filter
 "#;
-    
+
     let rule_obj = rule_from_yaml(rule.as_bytes()).unwrap();
     let event: serde_json::Value = serde_json::from_str(WINDOWS_LOGON_EVENT).unwrap();
-    
+
     // Test rule matching
     let matches = test_event_matches_rule(&event, &rule_obj).await;
     assert!(matches, "Should match network logon");
@@ -141,10 +141,10 @@ detection:
             - '-ep bypass'
     condition: selection
 "#;
-    
+
     let rule_obj = rule_from_yaml(rule.as_bytes()).unwrap();
     let event: serde_json::Value = serde_json::from_str(SYSMON_PROCESS_CREATE).unwrap();
-    
+
     let matches = test_event_matches_rule(&event, &rule_obj).await;
     assert!(matches, "Should match suspicious PowerShell");
 }
@@ -160,10 +160,10 @@ detection:
         data.syscall: execve
     condition: selection
 "#;
-    
+
     let rule_obj = rule_from_yaml(rule.as_bytes()).unwrap();
     let event: serde_json::Value = serde_json::from_str(LINUX_AUDIT_EVENT).unwrap();
-    
+
     let matches = test_event_matches_rule(&event, &rule_obj).await;
     assert!(matches, "Should match sudo execution");
 }
@@ -177,10 +177,10 @@ detection:
         EventData.IpAddress|startswith: '192.168.'
     condition: selection
 "#;
-    
+
     let rule_obj = rule_from_yaml(rule.as_bytes()).unwrap();
     let event: serde_json::Value = serde_json::from_str(WINDOWS_LOGON_EVENT).unwrap();
-    
+
     let matches = test_event_matches_rule(&event, &rule_obj).await;
     assert!(matches, "Should match nested field values");
 }
@@ -200,10 +200,10 @@ detection:
             - 10
     condition: selection
 "#;
-    
+
     let rule_obj = rule_from_yaml(rule.as_bytes()).unwrap();
     let event: serde_json::Value = serde_json::from_str(WINDOWS_LOGON_EVENT).unwrap();
-    
+
     let matches = test_event_matches_rule(&event, &rule_obj).await;
     assert!(matches, "Should match multiple value options");
 }
@@ -223,10 +223,10 @@ detection:
         EventData.ParentImage|endswith: '\explorer.exe'
     condition: (selection1 and selection2) and not filter
 "#;
-    
+
     let rule_obj = rule_from_yaml(rule.as_bytes()).unwrap();
     let event: serde_json::Value = serde_json::from_str(SYSMON_PROCESS_CREATE).unwrap();
-    
+
     let matches = test_event_matches_rule(&event, &rule_obj).await;
     assert!(matches, "Should match complex condition");
 }
@@ -239,10 +239,10 @@ detection:
         EventData.CommandLine|contains: 'BYPASS'
     condition: selection
 "#;
-    
+
     let rule_obj = rule_from_yaml(rule.as_bytes()).unwrap();
     let event: serde_json::Value = serde_json::from_str(SYSMON_PROCESS_CREATE).unwrap();
-    
+
     let matches = test_event_matches_rule(&event, &rule_obj).await;
     assert!(matches, "Should match case-insensitively");
 }
@@ -254,14 +254,14 @@ fn test_performance_large_event() {
         "EventID": 4688,
         "Channel": "Security"
     });
-    
+
     // Add 1000 fields
     if let Some(obj) = large_event.as_object_mut() {
         for i in 0..1000 {
             obj.insert(format!("Field{}", i), json!(format!("Value{}", i)));
         }
     }
-    
+
     let rule = r#"
 detection:
     selection:
@@ -269,12 +269,12 @@ detection:
         Field500: Value500
     condition: selection
 "#;
-    
+
     let start = std::time::Instant::now();
     let rule_obj = rule_from_yaml(rule.as_bytes()).unwrap();
     // Test matching would go here
     let duration = start.elapsed();
-    
+
     assert!(duration.as_millis() < 50, "Large event processing too slow");
 }
 
@@ -283,7 +283,7 @@ async fn test_event_matches_rule(event: &serde_json::Value, rule: &sigma_rs::rul
     // This is a simplified version - actual implementation would use the full engine
     let parser = Parser::new(rule.detection.clone(), false);
     let tree = parser.run().await.unwrap();
-    
+
     // Convert JSON to Event and match against tree
     // Note: This requires proper Event trait implementation
     true // Placeholder
@@ -292,21 +292,24 @@ async fn test_event_matches_rule(event: &serde_json::Value, rule: &sigma_rs::rul
 #[cfg(test)]
 mod event_format_tests {
     use super::*;
-    
+
     #[test]
     fn test_parse_windows_event() {
         let event: serde_json::Value = serde_json::from_str(WINDOWS_LOGON_EVENT).unwrap();
         assert_eq!(event["EventID"], 4624);
         assert_eq!(event["EventData"]["LogonType"], "3");
     }
-    
+
     #[test]
     fn test_parse_sysmon_event() {
         let event: serde_json::Value = serde_json::from_str(SYSMON_PROCESS_CREATE).unwrap();
         assert_eq!(event["EventID"], 1);
-        assert!(event["EventData"]["CommandLine"].as_str().unwrap().contains("powershell"));
+        assert!(event["EventData"]["CommandLine"]
+            .as_str()
+            .unwrap()
+            .contains("powershell"));
     }
-    
+
     #[test]
     fn test_parse_linux_event() {
         let event: serde_json::Value = serde_json::from_str(LINUX_AUDIT_EVENT).unwrap();
