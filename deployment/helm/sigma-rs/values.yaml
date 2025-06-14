@@ -1,0 +1,230 @@
+# Default values for sigma-rs
+replicaCount: 3
+
+image:
+  repository: sigma-rs
+  pullPolicy: IfNotPresent
+  tag: ""  # Defaults to chart appVersion
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+
+service:
+  type: ClusterIP
+  port: 8080
+  metricsPort: 9090
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: sigma-rs.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  # Custom metrics for Kafka lag
+  customMetrics:
+    enabled: true
+    kafkaConsumerLag:
+      targetValue: 1000
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - sigma-rs
+        topologyKey: kubernetes.io/hostname
+
+# Sigma-specific configuration
+sigma:
+  rulesDir: /rules
+  workerThreads: 4
+  collapseWhitespace: true
+  failOnParseError: false
+  stringInterning:
+    enabled: true
+    maxSize: 10000
+  
+  # Rules can be provided inline or mounted from ConfigMap/Secret
+  rules:
+    # Inline rules (for testing/examples)
+    inline:
+      enabled: false
+      rules: {}
+    
+    # Mount rules from existing ConfigMap
+    configMap:
+      enabled: true
+      name: sigma-rules
+    
+    # Mount rules from existing Secret
+    secret:
+      enabled: false
+      name: sigma-rules-secret
+    
+    # Mount rules from PVC
+    persistentVolume:
+      enabled: false
+      claimName: sigma-rules-pvc
+      mountPath: /rules
+
+# Kafka configuration
+kafka:
+  enabled: true
+  brokers: "kafka-0.kafka:9092,kafka-1.kafka:9092,kafka-2.kafka:9092"
+  groupId: "sigma-rs-processor"
+  topics:
+    - "security-events"
+    - "windows-events" 
+    - "linux-events"
+  batchSize: 1000
+  bufferSize: 10000
+  dlqTopic: "sigma-rs-dlq"
+  retryPolicy:
+    maxRetries: 3
+    baseDelay: 100ms
+    maxDelay: 60s
+    multiplier: 2.0
+  compression: "snappy"
+  tls:
+    enabled: false
+    certSecret: ""
+    keySecret: ""
+    caSecret: ""
+  sasl:
+    enabled: false
+    mechanism: "PLAIN"
+    username: ""
+    passwordSecret: ""
+
+# OpenTelemetry configuration
+opentelemetry:
+  enabled: false
+  endpoint: "otel-collector:4317"
+  serviceName: "sigma-rs"
+  samplingRate: 0.1
+  propagation: "tracecontext,baggage"
+  exporter: "otlp"
+  
+# Health check configuration
+healthCheck:
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# Additional environment variables
+env: []
+  # - name: RUST_LOG
+  #   value: "debug"
+
+# Additional volumes
+volumes: []
+
+# Additional volume mounts
+volumeMounts: []
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Network policies
+networkPolicy:
+  enabled: false
+  ingress:
+    enabled: true
+    from: []
+  egress:
+    enabled: true
+    to: []
+
+# Monitoring
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+  prometheusRule:
+    enabled: true
+    labels: {}
+    rules:
+      - alert: SigmaRsHighMemoryUsage
+        expr: |
+          container_memory_usage_bytes{pod=~"sigma-rs-.*"} / container_spec_memory_limit_bytes{pod=~"sigma-rs-.*"} > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sigma-rs pod {{ $labels.pod }} high memory usage"
+          description: "Pod {{ $labels.pod }} memory usage is above 90%"
+      
+      - alert: SigmaRsKafkaLag
+        expr: |
+          sigma_kafka_consumer_lag > 10000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sigma-rs Kafka consumer lag is high"
+          description: "Consumer lag is {{ $value }} messages"

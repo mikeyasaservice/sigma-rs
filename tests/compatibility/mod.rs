@@ -70,13 +70,19 @@ impl GoCompatibilityTester {
         // Create the event
         let dynamic_event = sigma_rs::DynamicEvent::new(event.clone());
         
-        // TODO: Once Tree implementation is complete, evaluate the rule
-        // let tree = sigma_rs::Tree::new(sigma_rule)?;
-        // let matched = tree.matches(&dynamic_event);
+        // Build and evaluate the tree
+        let runtime = tokio::runtime::Runtime::new()?;
+        let rule_handle = sigma_rs::rule::RuleHandle::new(sigma_rule, std::path::PathBuf::from("test.yml"));
+        let tree = runtime.block_on(async {
+            sigma_rs::tree::build_tree(rule_handle).await
+        })?;
         
-        // For now, return a placeholder
+        let (matched, applicable) = runtime.block_on(async {
+            tree.match_event(&dynamic_event).await
+        });
+        
         Ok(MatchResult {
-            matched: false,
+            matched,
             rule_id: sigma_rule.id.clone(),
             tags: sigma_rule.tags.iter().map(|t| t.name.clone()).collect(),
             level: sigma_rule.level.unwrap_or_else(|| "medium".to_string()),

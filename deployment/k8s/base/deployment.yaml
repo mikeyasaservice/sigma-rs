@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sigma-rs
+  labels:
+    app: sigma-rs
+    component: engine
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: sigma-rs
+      component: engine
+  template:
+    metadata:
+      labels:
+        app: sigma-rs
+        component: engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: sigma-rs
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: sigma-rs
+        image: sigma-rs:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: RUST_LOG
+          value: "info,sigma_rs=debug"
+        - name: SIGMA_RULES_DIR
+          value: "/rules"
+        - name: KAFKA_BROKERS
+          valueFrom:
+            configMapKeyRef:
+              name: sigma-rs-config
+              key: kafka.brokers
+        - name: KAFKA_GROUP_ID
+          valueFrom:
+            configMapKeyRef:
+              name: sigma-rs-config
+              key: kafka.group.id
+        - name: KAFKA_TOPICS
+          valueFrom:
+            configMapKeyRef:
+              name: sigma-rs-config
+              key: kafka.topics
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: rules
+          mountPath: /rules
+          readOnly: true
+        - name: config
+          mountPath: /config
+          readOnly: true
+      volumes:
+      - name: rules
+        configMap:
+          name: sigma-rules
+      - name: config
+        configMap:
+          name: sigma-rs-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sigma-rs
+  labels:
+    app: sigma-rs
+    component: engine
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: metrics
+    protocol: TCP
+    name: metrics
+  selector:
+    app: sigma-rs
+    component: engine

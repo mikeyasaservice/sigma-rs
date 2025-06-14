@@ -148,10 +148,11 @@ detection:
         // Create event
         let dynamic_event = DynamicEvent::new(event);
         
-        // TODO: Complete the pipeline test once the Tree implementation is ready
-        // let tree = sigma_rs::Tree::new(rule).unwrap();
-        // let matches = tree.matches(&dynamic_event);
-        // assert!(matches, "Event should match the rule");
+        // Build and evaluate tree
+        let rule_handle = sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("test.yml"));
+        let tree = sigma_rs::tree::build_tree(rule_handle).await.unwrap();
+        let (matches, _applicable) = tree.match_event(&dynamic_event).await;
+        assert!(matches, "Event should match the rule");
     }
 
     #[tokio::test]
@@ -206,7 +207,11 @@ detection:
         ];
 
         for (event, expected) in test_cases {
-            // TODO: Implement test once Tree is ready
+            let dynamic_event = DynamicEvent::new(event);
+            let rule_handle = sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("test.yml"));
+            let tree = sigma_rs::tree::build_tree(rule_handle).await.unwrap();
+            let (matches, _applicable) = tree.match_event(&dynamic_event).await;
+            assert_eq!(matches, expected, "Complex condition evaluation failed");
         }
     }
 }
@@ -245,10 +250,13 @@ detection:
         let go_result: bool = serde_json::from_slice(&go_output.stdout).unwrap();
 
         // Run Rust implementation
-        // TODO: Implement once Tree is ready
-        // let rust_result = evaluate_rule(test_rule, &test_event);
+        let rule = sigma_rs::rule::rule_from_yaml(test_rule.as_bytes()).unwrap();
+        let rule_handle = sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("test.yml"));
+        let tree = sigma_rs::tree::build_tree(rule_handle).await.unwrap();
+        let dynamic_event = DynamicEvent::new(test_event);
+        let (rust_result, _applicable) = tree.match_event(&dynamic_event).await;
         
-        // assert_eq!(rust_result, go_result, "Results should match between Go and Rust");
+        assert_eq!(rust_result, go_result, "Results should match between Go and Rust");
     }
 }
 
@@ -311,7 +319,28 @@ detection:
   condition: selection
 "#;
 
-        // TODO: Complete test once Tree is ready
+        // Parse rule and build tree
+        let rule = sigma_rs::rule::rule_from_yaml(rule_yaml.as_bytes()).unwrap();
+        let rule_handle = sigma_rs::rule::RuleHandle::new(rule, std::path::PathBuf::from("test.yml"));
+        let tree = sigma_rs::tree::build_tree(rule_handle).await.unwrap();
+        
+        // Test matching event
+        let matching_event = json!({
+            "EventID": 4624,
+            "LogonType": "3"
+        });
+        let dynamic_event = DynamicEvent::new(matching_event);
+        let (matches, _applicable) = tree.match_event(&dynamic_event).await;
+        assert!(matches, "Network logon event should match");
+        
+        // Test non-matching event
+        let non_matching_event = json!({
+            "EventID": 4624,
+            "LogonType": "2"  // Interactive logon, not network
+        });
+        let dynamic_event = DynamicEvent::new(non_matching_event);
+        let (matches, _applicable) = tree.match_event(&dynamic_event).await;
+        assert!(!matches, "Interactive logon should not match network logon rule");
     }
 }
 

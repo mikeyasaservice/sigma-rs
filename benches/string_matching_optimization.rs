@@ -5,6 +5,7 @@
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::hint::black_box;
+use std::sync::Arc;
 use sigma_rs::pattern::{
     string_matcher::{ContentPattern, PrefixPattern, SuffixPattern},
     traits::StringMatcher,
@@ -26,11 +27,11 @@ const TEST_STRINGS: &[&str] = &[
 
 const PATTERN_TOKEN: &str = "process_creation";
 
-fn bench_content_pattern_case_sensitive(c: &mut Criterion) {
     let pattern = ContentPattern {
-        token: PATTERN_TOKEN.to_string(),
+        token: Arc::from(PATTERN_TOKEN),
         lowercase: false,
         no_collapse_ws: false,
+    };
     };
 
     c.bench_function("content_pattern_case_sensitive", |b| {

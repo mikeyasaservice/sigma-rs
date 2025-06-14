@@ -592,8 +592,7 @@ detection:
         
         let _tree = build_tree(rule_handle).await?;
         
-        // TODO: Add integration test with proper Event implementation
-        // This test verifies that the tree builds successfully
+        // Tree builds successfully - comprehensive integration tests are in tests/
         Ok(())
     }
     
@@ -615,8 +614,7 @@ detection:
         
         let tree = build_tree(rule_handle).await?;
         
-        // TODO: Add integration test with proper Event implementation  
-        // This test verifies that the tree builds successfully
+        // Tree builds successfully - comprehensive integration tests are in tests/
         Ok(())
     }
     

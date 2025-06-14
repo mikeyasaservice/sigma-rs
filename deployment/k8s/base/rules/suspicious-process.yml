@@ -1,0 +1,38 @@
+title: Suspicious Process Creation
+id: 7b449a5e-1db5-4dd0-a2dc-4e3a67282538
+status: stable
+description: Detects suspicious process creation patterns often used by malware
+tags:
+  - attack.defense_evasion
+  - attack.t1055
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  selection_suspicious_parent:
+    EventID: 1
+    ParentImage|endswith:
+      - '\winword.exe'
+      - '\excel.exe'
+      - '\powerpnt.exe'
+      - '\outlook.exe'
+    Image|endswith:
+      - '\cmd.exe'
+      - '\powershell.exe'
+      - '\wscript.exe'
+      - '\cscript.exe'
+  selection_suspicious_location:
+    EventID: 1
+    Image|startswith:
+      - 'C:\Users\Public\'
+      - 'C:\Windows\Temp\'
+      - 'C:\Temp\'
+    Image|endswith:
+      - '.exe'
+      - '.scr'
+      - '.com'
+  condition: selection_suspicious_parent or selection_suspicious_location
+level: medium
+falsepositives:
+  - Legitimate software installers
+  - Administrative scripts

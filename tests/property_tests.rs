@@ -123,9 +123,13 @@ proptest! {
         
         // This should not panic even with an empty event
         if let Ok(parsed_rule) = sigma_rs::rule::rule_from_yaml(rule.as_bytes()) {
-            // TODO: Once Tree is implemented
-            // let tree = Tree::new(parsed_rule).unwrap();
-            // let _ = tree.matches(&empty_event);
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            let rule_handle = sigma_rs::rule::RuleHandle::new(parsed_rule, std::path::PathBuf::from("test.yml"));
+            runtime.block_on(async {
+                if let Ok(tree) = sigma_rs::tree::build_tree(rule_handle).await {
+                    let _ = tree.match_event(&empty_event).await;
+                }
+            });
         }
     }
 
@@ -226,8 +230,29 @@ proptest! {
         let event_exact = json!({ "field": text });
         let event_collapsed = json!({ "field": text.split_whitespace().collect::<Vec<_>>().join(" ") });
         
-        // TODO: Test with both whitespace collapse settings
-        // This would be tested once Tree is implemented
+        // Test with both whitespace collapse settings
+        if let Ok(parsed_rule) = sigma_rs::rule::rule_from_yaml(rule.as_bytes()) {
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            
+            // Test with whitespace collapse disabled
+            let rule_handle_no_collapse = sigma_rs::rule::RuleHandle::new(parsed_rule.clone(), std::path::PathBuf::from("test.yml"))
+                .with_no_collapse_ws(true);
+            runtime.block_on(async {
+                if let Ok(tree) = sigma_rs::tree::build_tree(rule_handle_no_collapse).await {
+                    let exact_event = DynamicEvent::new(event_exact.clone());
+                    let _ = tree.match_event(&exact_event).await;
+                }
+            });
+            
+            // Test with whitespace collapse enabled (default)
+            let rule_handle_collapse = sigma_rs::rule::RuleHandle::new(parsed_rule, std::path::PathBuf::from("test.yml"));
+            runtime.block_on(async {
+                if let Ok(tree) = sigma_rs::tree::build_tree(rule_handle_collapse).await {
+                    let collapsed_event = DynamicEvent::new(event_collapsed);
+                    let _ = tree.match_event(&collapsed_event).await;
+                }
+            });
+        }
     }
 
     #[test]
@@ -283,14 +308,23 @@ proptest! {
         if let Ok(parsed_rule) = sigma_rs::rule::rule_from_yaml(rule.as_bytes()) {
             let dynamic_event = DynamicEvent::new(event.clone());
             
-            // TODO: Once Tree is implemented
-            // let tree1 = Tree::new(parsed_rule.clone()).unwrap();
-            // let tree2 = Tree::new(parsed_rule).unwrap();
-            //
-            // let result1 = tree1.matches(&dynamic_event);
-            // let result2 = tree2.matches(&dynamic_event);
-            //
-            // assert_eq!(result1, result2, "Rule evaluation should be deterministic");
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            
+            // Build two trees from the same rule
+            let rule_handle1 = sigma_rs::rule::RuleHandle::new(parsed_rule.clone(), std::path::PathBuf::from("test.yml"));
+            let rule_handle2 = sigma_rs::rule::RuleHandle::new(parsed_rule, std::path::PathBuf::from("test.yml"));
+            
+            runtime.block_on(async {
+                if let (Ok(tree1), Ok(tree2)) = (
+                    sigma_rs::tree::build_tree(rule_handle1).await,
+                    sigma_rs::tree::build_tree(rule_handle2).await
+                ) {
+                    let result1 = tree1.match_event(&dynamic_event).await;
+                    let result2 = tree2.match_event(&dynamic_event).await;
+                    
+                    assert_eq!(result1, result2, "Rule evaluation should be deterministic");
+                }
+            });
         }
     }
 }

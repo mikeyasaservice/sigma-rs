@@ -129,6 +129,23 @@ pub mod consumer {
 /// Aggregation support for Sigma rules  
 pub mod aggregation;
 
+/// OpenTelemetry integration for distributed tracing
+#[cfg(feature = "telemetry")]
+pub mod telemetry;
+
+#[cfg(not(feature = "telemetry"))]
+pub mod telemetry {
+    //! Stub module when telemetry feature is disabled
+    use anyhow::Result;
+    
+    #[derive(Debug, Clone, Default)]
+    pub struct TelemetryConfig;
+    
+    pub fn init_telemetry(_: TelemetryConfig) -> Result<()> { Ok(()) }
+    pub fn init_telemetry_from_env() -> Result<()> { Ok(()) }
+    pub fn shutdown_telemetry() {}
+}
+
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

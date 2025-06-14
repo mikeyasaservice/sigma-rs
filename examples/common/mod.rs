@@ -151,7 +151,7 @@ fn load_rule_from_file(path: &PathBuf) -> Result<Rule> {
     let content = fs::read_to_string(path)?;
     let rule = match sigma_rs::rule::rule_from_yaml(content.as_bytes()) {
         Ok(r) => r,
-        Err(e) => return Err(sigma_rs::SigmaError::YamlParse(e)),
+        Err(e) => return Err(e.into()),
     };
     Ok(rule)
 }
