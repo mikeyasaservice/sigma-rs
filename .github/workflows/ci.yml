@@ -158,9 +158,10 @@ jobs:
         run: cargo tarpaulin --all-features --workspace --out xml
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           files: ./cobertura.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
   
   benchmarks:

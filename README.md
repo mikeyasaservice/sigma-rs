@@ -1,9 +1,9 @@
 # Sigma-rs: High-Performance Rust Implementation of Sigma Rules
 
-[![CI](https://github.com/sigma-rs/sigma-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/sigma-rs/sigma-rs/actions/workflows/ci.yml)
-[![Code Quality](https://github.com/sigma-rs/sigma-rs/actions/workflows/quality.yml/badge.svg)](https://github.com/sigma-rs/sigma-rs/actions/workflows/quality.yml)
-[![Security](https://github.com/sigma-rs/sigma-rs/actions/workflows/security.yml/badge.svg)](https://github.com/sigma-rs/sigma-rs/actions/workflows/security.yml)
-[![Coverage](https://codecov.io/gh/sigma-rs/sigma-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/sigma-rs/sigma-rs)
+[![CI](https://github.com/mikeyasaservice/sigma-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/mikeyasaservice/sigma-rs/actions/workflows/ci.yml)
+[![Code Quality](https://github.com/mikeyasaservice/sigma-rs/actions/workflows/quality.yml/badge.svg)](https://github.com/mikeyasaservice/sigma-rs/actions/workflows/quality.yml)
+[![Security](https://github.com/mikeyasaservice/sigma-rs/actions/workflows/security.yml/badge.svg)](https://github.com/mikeyasaservice/sigma-rs/actions/workflows/security.yml)
+[![Coverage](https://codecov.io/gh/mikeyasaservice/sigma-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/mikeyasaservice/sigma-rs)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/sigma-rs.svg)](https://crates.io/crates/sigma-rs)
 [![FOSSA Status](https://app.fossa.com/api/projects/custom%2B54172%2Fgithub.com%2Fseacurity%2Fsigma-rs.svg?type=shield&issueType=license)](https://app.fossa.com/projects/custom%2B54172%2Fgithub.com%2Fseacurity%2Fsigma-rs?ref=badge_shield&issueType=license)
