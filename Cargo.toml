@@ -1,6 +1,6 @@
 [package]
 name = "sigma-rs"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 authors = ["Sigma-rs Contributors <contact@sigma-rs.io>"]
 description = "High-performance Rust implementation of the Sigma rule engine for security event detection"
