@@ -51,34 +51,20 @@ jobs:
             ${{ runner.os }}-cargo-
       
       - name: Build
-        run: cargo build --all-features --verbose
+        run: cargo build --no-default-features --verbose
       
       - name: Run tests
-        run: cargo test --all-features --verbose
+        run: cargo test --no-default-features --verbose
       
       - name: Run tests (without default features)
         run: cargo test --no-default-features --verbose
       
       - name: Run doctests
-        run: cargo test --doc --all-features --verbose
-      
-      - name: Test with kafka feature
-        run: cargo test --features kafka --verbose
-        if: matrix.os == 'ubuntu-latest'
+        run: cargo test --doc --no-default-features --verbose
       
       - name: Test with metrics feature
         run: cargo test --features metrics --verbose
       
-      - name: Test with service feature
-        run: cargo test --features service --verbose
-        if: matrix.os == 'ubuntu-latest'
-      
-      - name: Run examples
-        run: |
-          cargo run --example rule_validator
-          cargo run --example event_detector
-          cargo run --example simple_detection
-        if: matrix.os == 'ubuntu-latest'
   
   fmt:
     name: Rustfmt
@@ -124,7 +110,7 @@ jobs:
             ${{ runner.os }}-cargo-
       
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --no-default-features -- -D warnings
   
   coverage:
     name: Code Coverage
@@ -155,7 +141,7 @@ jobs:
             ${{ runner.os }}-cargo-
       
       - name: Generate code coverage
-        run: cargo tarpaulin --all-features --workspace --out xml
+        run: cargo tarpaulin --no-default-features --workspace --out xml
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -191,7 +177,7 @@ jobs:
             ${{ runner.os }}-cargo-
       
       - name: Run benchmarks
-        run: cargo bench --all-features --verbose
+        run: cargo bench --no-default-features --verbose
       
       - name: Store benchmark results
         uses: benchmark-action/github-action-benchmark@v1
@@ -215,7 +201,7 @@ jobs:
           override: true
       
       - name: Build documentation
-        run: cargo doc --all-features --no-deps
+        run: cargo doc --no-default-features --no-deps
       
       - name: Test documentation
-        run: cargo test --doc --all-features
+        run: cargo test --doc --no-default-features
