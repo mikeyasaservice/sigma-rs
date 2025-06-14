@@ -1,0 +1,17 @@
+# Sigma-rs Configuration File
+
+[kafka]
+# Kafka broker addresses (comma-separated)
+brokers = "localhost:9092"
+
+# Input topic to consume events from
+input_topic = "security-events"
+
+# Output topic to send matches to
+output_topic = "sigma-matches"
+
+# Consumer group ID
+group_id = "sigma-rs"
+
+# Where to start reading if no offset exists (earliest/latest)
+auto_offset_reset = "latest"
