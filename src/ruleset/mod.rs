@@ -406,7 +406,7 @@ mod tests {
         
         let rule_yaml = br#"
         title: Test Rule
-        id: test-rule-1
+        id: 12345678-1234-1234-1234-123456789001
         detection:
             selection:
                 EventID: 1
@@ -428,7 +428,7 @@ mod tests {
         // Add a matching rule
         let rule_yaml = br#"
         title: Process Creation
-        id: proc-create-1
+        id: 12345678-1234-1234-1234-123456789002
         detection:
             selection:
                 EventID: 1
@@ -470,7 +470,7 @@ mod tests {
         
         let rule_yaml = br#"
         title: Test Rule
-        id: test-rule-1
+        id: 12345678-1234-1234-1234-123456789003
         detection:
             selection:
                 EventID: 1
@@ -514,7 +514,7 @@ mod tests {
         let mut temp_file = NamedTempFile::new().unwrap();
         let rule_yaml = r#"
 title: Small Test Rule
-id: small-test-1
+id: 12345678-1234-1234-1234-123456789004
 detection:
     selection:
         EventID: 1
@@ -538,12 +538,12 @@ detection:
         for i in 0..200 {
             let rule_yaml = format!(r#"
 title: Test Rule {}
-id: test-rule-{}
+id: {:08x}-1234-1234-1234-123456789{:03}
 detection:
     selection:
         EventID: {}
     condition: selection
-"#, i, i, i % 10);
+"#, i, i, i, i % 10);
             
             let rule = rule_from_yaml(rule_yaml.as_bytes())?;
             ruleset.add_rule(rule).await?;
@@ -570,7 +570,7 @@ detection:
         
         let rule_yaml = br#"
         title: Test Rule
-        id: test-rule-1
+        id: 12345678-1234-1234-1234-123456789001
         detection:
             selection:
                 EventID: 1
@@ -584,19 +584,19 @@ detection:
         assert_eq!(ruleset.get_metadata().enabled_rules, 1);
         
         // Disable the rule
-        ruleset.set_rule_enabled("test-rule-1", false)?;
+        ruleset.set_rule_enabled("12345678-1234-1234-1234-123456789001", false)?;
         assert_eq!(ruleset.get_metadata().enabled_rules, 0);
         
         // Disable again - should not change counter
-        ruleset.set_rule_enabled("test-rule-1", false)?;
+        ruleset.set_rule_enabled("12345678-1234-1234-1234-123456789001", false)?;
         assert_eq!(ruleset.get_metadata().enabled_rules, 0);
         
         // Enable the rule
-        ruleset.set_rule_enabled("test-rule-1", true)?;
+        ruleset.set_rule_enabled("12345678-1234-1234-1234-123456789001", true)?;
         assert_eq!(ruleset.get_metadata().enabled_rules, 1);
         
         // Enable again - should not change counter
-        ruleset.set_rule_enabled("test-rule-1", true)?;
+        ruleset.set_rule_enabled("12345678-1234-1234-1234-123456789001", true)?;
         assert_eq!(ruleset.get_metadata().enabled_rules, 1);
         
         Ok(())

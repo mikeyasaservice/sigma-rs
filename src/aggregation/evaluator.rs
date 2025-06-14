@@ -18,6 +18,7 @@ use super::{AggregationResult, AggregationStatistics, AggregationConfig};
 /// * `stats` - Thread-safe statistics tracking during evaluation
 pub struct AggregationEvaluator {
     cache: Cache<String, Arc<RwLock<GroupState>>>,
+    #[allow(dead_code)] // TODO: Use config for customizing aggregation behavior
     config: AggregationConfig,
     stats: Arc<Stats>,
 }
@@ -34,6 +35,7 @@ struct GroupState {
 #[derive(Debug)]
 struct Stats {
     total_evaluations: AtomicU64,
+    #[allow(dead_code)] // TODO: Use active_groups for monitoring
     active_groups: AtomicUsize,
 }
 
