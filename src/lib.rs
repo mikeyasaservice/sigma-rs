@@ -136,15 +136,19 @@ pub mod telemetry {
     //! Stub module when telemetry feature is disabled
     use anyhow::Result;
 
+    /// Telemetry configuration struct (stub when feature disabled)
     #[derive(Debug, Clone, Default)]
     pub struct TelemetryConfig;
 
+    /// Initialize telemetry (no-op when feature disabled)
     pub fn init_telemetry(_: TelemetryConfig) -> Result<()> {
         Ok(())
     }
+    /// Initialize telemetry from environment (no-op when feature disabled)
     pub fn init_telemetry_from_env() -> Result<()> {
         Ok(())
     }
+    /// Shutdown telemetry (no-op when feature disabled)
     pub fn shutdown_telemetry() {}
 }
 

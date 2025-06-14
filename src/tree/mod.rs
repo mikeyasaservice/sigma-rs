@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::ast::Branch;
 use crate::rule::RuleHandle;
 
+/// Tree builder module for constructing AST from rules
 pub mod builder;
 
 pub use builder::build_tree;
@@ -10,7 +11,9 @@ pub use builder::build_tree;
 /// Tree represents the full AST for a sigma rule
 #[derive(Debug)]
 pub struct Tree {
+    /// Root node of the AST
     pub root: Arc<dyn Branch>,
+    /// Associated rule handle
     pub rule: Arc<RuleHandle>,
 }
 

@@ -88,6 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // Load configuration if needed
+    #[allow(unused_variables)]
     let config = if needs_config(&cli) {
         match &cli.config {
             Some(path) => {
@@ -145,6 +146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (InputSource::Kafka, OutputTarget::Kafka) => {
             process_kafka_to_kafka(ruleset, config.kafka).await?;
         }
+        #[cfg(feature = "kafka")]
         _ => {
             eprintln!("Invalid input/output combination");
             std::process::exit(1);
@@ -161,6 +163,7 @@ fn needs_config(cli: &Cli) -> bool {
     }
     #[cfg(not(feature = "kafka"))]
     {
+        let _ = cli; // Suppress unused warning
         false
     }
 }

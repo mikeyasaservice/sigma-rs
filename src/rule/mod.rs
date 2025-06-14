@@ -32,8 +32,11 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Detection module containing Sigma detection logic
 pub mod detection;
+/// Logsource module for log source definitions
 pub mod logsource;
+/// Tags module for rule tag handling
 pub mod tags;
 
 pub use detection::Detection;

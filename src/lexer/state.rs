@@ -7,16 +7,27 @@ use crate::lexer::{
 /// States in the lexer state machine
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LexState {
+    /// Main condition parsing state
     Condition,
+    /// Parsing "1 of" statement
     OneOf,
+    /// Parsing "all of" statement
     AllOf,
+    /// End of file reached
     Eof,
+    /// Pipe separator found
     Pipe,
+    /// Left parenthesis found
     Lpar,
+    /// Right parenthesis found
     Rpar,
+    /// Right parenthesis with preceding tokens
     RparWithTokens,
+    /// Accumulating tokens before whitespace
     AccumulateBeforeWhitespace,
+    /// Processing whitespace
     Whitespace,
+    /// Aggregation state (unsupported)
     Aggregation,
 }
 

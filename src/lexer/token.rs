@@ -5,38 +5,59 @@ use glob::Pattern;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Token {
     // Helpers for internal stuff
+    /// Error token
     Error = 0,
+    /// Unsupported token type
     Unsupported = 1,
+    /// Empty/nil token
     Nil = 2,
 
     // User-defined word
+    /// Regular identifier
     Identifier = 3,
+    /// Identifier containing wildcards
     IdentifierWithWildcard = 4,
+    /// Special identifier "them"
     IdentifierAll = 5,
 
     // Literals
+    /// End of file literal
     LitEof = 6,
 
     // Separators
+    /// Left parenthesis separator
     SepLpar = 7,
+    /// Right parenthesis separator
     SepRpar = 8,
+    /// Pipe separator
     SepPipe = 9,
 
     // Operators
+    /// Equals operator
     OpEq = 10,
+    /// Greater than operator
     OpGt = 11,
+    /// Greater than or equal operator
     OpGte = 12,
+    /// Less than operator
     OpLt = 13,
+    /// Less than or equal operator
     OpLte = 14,
 
     // Keywords
+    /// AND keyword
     KeywordAnd = 15,
+    /// OR keyword
     KeywordOr = 16,
+    /// NOT keyword
     KeywordNot = 17,
+    /// Aggregation keyword (sum, min, max, etc.)
     KeywordAgg = 18,
 
     // Statements
+    /// "1 of" statement
     StmtOneOf = 19,
+    /// "all of" statement
     StmtAllOf = 20,
 }
 
@@ -102,7 +123,9 @@ impl Token {
 /// Lexical token with its value
 #[derive(Debug, Clone)]
 pub struct Item {
+    /// The token type
     pub token: Token,
+    /// The token value
     pub value: String,
     glob_val: Option<Pattern>,
     glob_compile_failed: bool,
