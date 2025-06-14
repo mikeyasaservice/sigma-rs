@@ -135,25 +135,6 @@ harness = false
 name = "tree_evaluation"
 harness = false
 
-[[example]]
-name = "rule_validator"
-required-features = []
-
-[[example]]
-name = "event_detector"
-required-features = []
-
-[[example]]
-name = "simple_detection"
-required-features = []
-
-[[example]]
-name = "stream_detector"
-required-features = ["kafka"]
-
-[[example]]
-name = "parallel_stream_detector"
-required-features = ["kafka"]
 
 [profile.release]
 opt-level = 3
