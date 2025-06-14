@@ -25,6 +25,26 @@ A production-ready Rust implementation of the Sigma rule engine with Redpanda/Ka
 
 ## Quick Start
 
+### Using the CLI
+
+```bash
+# Clone and build
+git clone https://github.com/mikeyasaservice/sigma-rs
+cd sigma-rs
+cargo build --release
+
+# Run with the helper script
+./run.sh --rules ./rules < events.json
+
+# Or use make
+make run < events.json
+
+# Or run directly
+./target/release/sigma-rs --rules ./rules < events.json
+```
+
+### Using as a Library
+
 ```rust
 use sigma_rs::{DynamicEvent, rule};
 use serde_json::json;

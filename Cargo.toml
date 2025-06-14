@@ -135,6 +135,9 @@ harness = false
 name = "tree_evaluation"
 harness = false
 
+[[bin]]
+name = "sigma-rs"
+path = "src/bin/main.rs"
 
 [profile.release]
 opt-level = 3
