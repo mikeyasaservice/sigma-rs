@@ -104,11 +104,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Config::default()
     };
     
+    // Validate rules directory exists
+    if !cli.rules.exists() {
+        eprintln!("Error: Rules directory not found: {}", cli.rules.display());
+        eprintln!("Please specify a valid rules directory with --rules");
+        std::process::exit(1);
+    }
+    
+    if !cli.rules.is_dir() {
+        eprintln!("Error: Rules path is not a directory: {}", cli.rules.display());
+        std::process::exit(1);
+    }
+    
     // Load rules
     let mut ruleset = RuleSet::new();
     ruleset.load_directory(&cli.rules.to_string_lossy()).await?;
     
-    eprintln!("Loaded {} rules", ruleset.len());
+    if ruleset.len() == 0 {
+        eprintln!("Error: No rules found in directory: {}", cli.rules.display());
+        eprintln!("Please ensure the directory contains valid .yml rule files");
+        std::process::exit(1);
+    }
+    
+    eprintln!("Loaded {} rules from {}", ruleset.len(), cli.rules.display());
     
     // Process events based on input/output configuration
     match (cli.input, cli.output) {
