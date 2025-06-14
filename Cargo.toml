@@ -120,14 +120,6 @@ telemetry = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-otlp", "opente
 all = ["kafka", "metrics", "service", "telemetry"]
 
 [[bench]]
-name = "sigma_benchmarks"
-harness = false
-
-[[bench]]
-name = "rule_matching"
-harness = false
-
-[[bench]]
 name = "simplified_benchmarks"
 harness = false
 
@@ -137,6 +129,10 @@ harness = false
 
 [[bench]]
 name = "consumer_benchmarks"
+harness = false
+
+[[bench]]
+name = "tree_evaluation"
 harness = false
 
 [[example]]
