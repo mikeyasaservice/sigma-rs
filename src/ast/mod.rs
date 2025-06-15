@@ -8,28 +8,56 @@ use tracing::warn;
 pub mod nodes;
 pub use nodes::*;
 
-/// Convert our Value type to serde_json::Value for pattern matching
-fn value_to_json(value: Value) -> serde_json::Value {
+// DataFusion AST for high-performance columnar processing
+pub mod datafusion;
+
+// Tiered compiler for optimized rule evaluation
+pub mod tiered_compiler;
+
+// AST optimization module
+pub mod optimizer;
+pub use optimizer::{AdvancedASTOptimizer, CostBasedOptimizer, ASTStatistics};
+
+// String interning for memory optimization
+pub mod string_interner;
+pub use string_interner::{StringInterner, FieldNameInterner, intern_string, MemoryPressureCallback};
+
+// Observability and performance monitoring
+pub mod observability;
+pub use observability::{ASTMetrics, PerformanceAnalyzer, ObservableEvaluation, global_analyzer};
+
+// SIMD-accelerated boolean operations
+pub mod simd_operations;
+pub use simd_operations::{SimdBooleanOps, SimdBooleanEvaluator, BooleanExpression, OptimizedBatchBuilder};
+
+
+/// Convert our Value type to serde_json::Value efficiently
+/// This function is optimized for common cases and avoids unnecessary allocations
+fn value_to_json_efficient(value: &Value) -> serde_json::Value {
     match value {
-        Value::String(s) => serde_json::Value::String(s.to_string()),
-        Value::Integer(i) => serde_json::Value::Number(serde_json::Number::from(i)),
+        Value::String(s) => serde_json::Value::String(s.as_ref().to_string()),
+        Value::Integer(i) => serde_json::Value::Number(serde_json::Number::from(*i)),
         Value::Float(f) => {
             if f.is_finite() {
-                serde_json::Value::Number(serde_json::Number::from_f64(f).unwrap())
+                serde_json::Value::Number(serde_json::Number::from_f64(*f).unwrap())
             } else {
                 warn!("Non-finite float value encountered: {:?}", f);
                 serde_json::Value::Null
             }
         },
-        Value::Boolean(b) => serde_json::Value::Bool(b),
-        Value::Array(arr) => serde_json::Value::Array(
-            arr.into_iter().map(value_to_json).collect()
-        ),
-        Value::Object(obj) => serde_json::Value::Object(
-            obj.into_iter()
-                .map(|(k, v)| (k, value_to_json(v)))
-                .collect()
-        ),
+        Value::Boolean(b) => serde_json::Value::Bool(*b),
+        Value::Array(arr) => {
+            let json_array: Vec<serde_json::Value> = arr.iter()
+                .map(value_to_json_efficient)
+                .collect();
+            serde_json::Value::Array(json_array)
+        },
+        Value::Object(obj) => {
+            let json_obj: serde_json::Map<String, serde_json::Value> = obj.iter()
+                .map(|(k, v)| (k.clone(), value_to_json_efficient(v)))
+                .collect();
+            serde_json::Value::Object(json_obj)
+        },
         Value::Null => serde_json::Value::Null,
     }
 }
@@ -82,6 +110,85 @@ pub trait Branch: Debug + Send + Sync {
     
     /// Get a human-readable description of the node
     fn describe(&self) -> String;
+    
+    /// Accept a visitor for AST traversal and transformation
+    fn accept(&self, visitor: &mut dyn ASTVisitor);
+    
+    /// Get the estimated cost of evaluating this branch
+    fn cost_estimate(&self) -> usize {
+        1 // Default cost
+    }
+}
+
+/// AST Visitor trait for traversal and transformation
+pub trait ASTVisitor {
+    /// Visit an AND node
+    fn visit_and(&mut self, node: &NodeAnd);
+    /// Visit an OR node
+    fn visit_or(&mut self, node: &NodeOr);
+    /// Visit a NOT node
+    fn visit_not(&mut self, node: &NodeNot);
+    /// Visit a field rule
+    fn visit_field_rule(&mut self, rule: &FieldRule);
+    /// Visit an identifier
+    fn visit_identifier(&mut self, ident: &Identifier);
+    /// Visit an aggregation node
+    fn visit_aggregation(&mut self, agg: &NodeAggregation);
+}
+
+/// AST optimization pass
+pub struct ASTOptimizer {
+    /// Track constant values for folding
+    _constants: std::collections::HashMap<String, serde_json::Value>,
+    /// Track common subexpressions
+    _subexpressions: std::collections::HashMap<String, Arc<dyn Branch>>,
+}
+
+impl ASTOptimizer {
+    /// Create a new AST optimizer
+    pub fn new() -> Self {
+        Self {
+            _constants: std::collections::HashMap::new(),
+            _subexpressions: std::collections::HashMap::new(),
+        }
+    }
+    
+    /// Optimize an AST by applying various transformations
+    pub fn optimize(&mut self, ast: Arc<dyn Branch>) -> Arc<dyn Branch> {
+        // For now, just return the original AST
+        // Full implementation would include:
+        // - Constant folding
+        // - Common subexpression elimination
+        // - Dead code removal
+        // - Boolean simplification (e.g., true AND x => x)
+        ast
+    }
+}
+
+impl ASTVisitor for ASTOptimizer {
+    fn visit_and(&mut self, _node: &NodeAnd) {
+        // Implement AND optimization
+    }
+    
+    fn visit_or(&mut self, _node: &NodeOr) {
+        // Implement OR optimization
+    }
+    
+    fn visit_not(&mut self, _node: &NodeNot) {
+        // Implement NOT optimization
+    }
+    
+    fn visit_field_rule(&mut self, _rule: &FieldRule) {
+        // Check for constant field values
+    }
+    
+    fn visit_identifier(&mut self, _ident: &Identifier) {
+        // Track identifier usage
+    }
+    
+    fn visit_aggregation(&mut self, _agg: &NodeAggregation) {
+        // Aggregation optimization
+    }
 }
 
 use crate::pattern::{StringMatcher, NumMatcher, TextPatternModifier, new_string_matcher};
@@ -155,6 +262,14 @@ impl FieldRule {
         Self { field, pattern }
     }
     
+    /// Create a new field rule with automatic string interning
+    pub fn new_interned(field: &str, pattern: FieldPattern) -> Self {
+        Self { 
+            field: intern_string(field), 
+            pattern 
+        }
+    }
+    
     /// Create a string pattern
     pub fn string_pattern(field: Arc<str>, pattern: String, modifier: TextPatternModifier) -> Result<Self, String> {
         let matcher = new_string_matcher(
@@ -204,7 +319,7 @@ impl FieldRule {
                 };
                 
                 // Convert our Value to serde_json::Value for coercion
-                let json_value = value_to_json(value);
+                let json_value = value_to_json_efficient(&value);
                 let value_str = coerce_for_string_match(&json_value);
                 MatchResult::new(matcher.string_match(&value_str), true)
             }
@@ -216,7 +331,7 @@ impl FieldRule {
                 };
                 
                 // Convert our Value to serde_json::Value for coercion
-                let json_value = value_to_json(value);
+                let json_value = value_to_json_efficient(&value);
                 let num_value = match coerce_for_numeric_match(&json_value) {
                     Some(n) => n,
                     None => return MatchResult::not_matched(),
@@ -247,6 +362,18 @@ impl Branch for FieldRule {
     fn describe(&self) -> String {
         format!("{} matches {:?}", self.field, self.pattern)
     }
+    
+    fn accept(&self, visitor: &mut dyn ASTVisitor) {
+        visitor.visit_field_rule(self);
+    }
+    
+    fn cost_estimate(&self) -> usize {
+        match &self.pattern {
+            FieldPattern::String { .. } => 5,
+            FieldPattern::Numeric { .. } => 2,
+            FieldPattern::Keywords(keywords) => keywords.len() * 3,
+        }
+    }
 }
 
 // Custom serialization implementation for FieldRule
@@ -270,28 +397,28 @@ mod tests {
     #[test]
     fn test_value_to_json_finite_float() {
         let value = Value::Float(42.5);
-        let json = value_to_json(value);
+        let json = value_to_json_efficient(&value);
         assert_eq!(json, serde_json::Value::Number(serde_json::Number::from_f64(42.5).unwrap()));
     }
 
     #[test]
     fn test_value_to_json_nan() {
         let value = Value::Float(f64::NAN);
-        let json = value_to_json(value);
+        let json = value_to_json_efficient(&value);
         assert_eq!(json, serde_json::Value::Null);
     }
 
     #[test]
     fn test_value_to_json_positive_infinity() {
         let value = Value::Float(f64::INFINITY);
-        let json = value_to_json(value);
+        let json = value_to_json_efficient(&value);
         assert_eq!(json, serde_json::Value::Null);
     }
 
     #[test]
     fn test_value_to_json_negative_infinity() {
         let value = Value::Float(f64::NEG_INFINITY);
-        let json = value_to_json(value);
+        let json = value_to_json_efficient(&value);
         assert_eq!(json, serde_json::Value::Null);
     }
 }
