@@ -129,43 +129,54 @@ impl RuleSet {
             .map_err(|e| anyhow::anyhow!(e))
     }
 
-    /// Internal method to load rules from a directory
+    /// Internal method to load rules from a directory (recursively)
     async fn load_from_directory(&mut self, dir: &str, fail_on_error: bool) -> SigmaResult<()> {
         let path = Path::new(dir);
         if !path.exists() {
             return Err(SigmaError::Parse(format!("Directory not found: {}", dir)));
         }
 
-        let mut entries = tokio::fs::read_dir(path)
-            .await
-            .map_err(|e| SigmaError::Parse(format!("Failed to read directory {}: {}", dir, e)))?;
+        // Use a stack for iterative directory traversal to avoid deep recursion
+        let mut dirs_to_process = vec![path.to_path_buf()];
+        let mut total_file_count = 0;
 
-        let mut file_count = 0;
-        while let Some(entry) = entries
-            .next_entry()
-            .await
-            .map_err(|e| SigmaError::Parse(format!("Failed to read directory entry: {}", e)))?
-        {
-            // Check file count limit to prevent resource exhaustion
-            if file_count >= MAX_RULES_PER_DIR {
-                warn!(
-                    "Reached maximum rules limit ({}) in directory: {}. Skipping remaining files.",
-                    MAX_RULES_PER_DIR, dir
-                );
-                break;
-            }
-            file_count += 1;
+        while let Some(current_dir) = dirs_to_process.pop() {
+            let mut entries = tokio::fs::read_dir(&current_dir)
+                .await
+                .map_err(|e| SigmaError::Parse(format!("Failed to read directory {:?}: {}", current_dir, e)))?;
 
-            let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("yml") {
-                match self.load_rule_file(&path).await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        error!("Failed to load rule {}: {}", path.display(), e);
-                        self.metadata.failed_rules += 1;
+            while let Some(entry) = entries
+                .next_entry()
+                .await
+                .map_err(|e| SigmaError::Parse(format!("Failed to read directory entry: {}", e)))?
+            {
+                // Check file count limit to prevent resource exhaustion
+                if total_file_count >= MAX_RULES_PER_DIR {
+                    warn!(
+                        "Reached maximum rules limit ({}). Skipping remaining files.",
+                        MAX_RULES_PER_DIR
+                    );
+                    return Ok(());
+                }
 
-                        if fail_on_error {
-                            return Err(e);
+                let path = entry.path();
+                let file_type = entry.file_type().await
+                    .map_err(|e| SigmaError::Parse(format!("Failed to get file type: {}", e)))?;
+
+                if file_type.is_dir() {
+                    // Add subdirectory to process list
+                    dirs_to_process.push(path);
+                } else if file_type.is_file() && path.extension().and_then(|s| s.to_str()) == Some("yml") {
+                    total_file_count += 1;
+                    match self.load_rule_file(&path).await {
+                        Ok(_) => {}
+                        Err(e) => {
+                            error!("Failed to load rule {}: {}", path.display(), e);
+                            self.metadata.failed_rules += 1;
+
+                            if fail_on_error {
+                                return Err(e);
+                            }
                         }
                     }
                 }

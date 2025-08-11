@@ -414,26 +414,34 @@ where
 }
 
 /// Parse field modifier from field string (e.g., "CommandLine|contains" -> ("CommandLine", Some(TextPatternModifier::Contains)))
-fn parse_field_modifier(field: &str) -> (&str, Option<crate::pattern::TextPatternModifier>) {
+/// Also handles compound modifiers like "|contains|all"
+fn parse_field_modifier(field: &str) -> (&str, Option<crate::pattern::TextPatternModifier>, bool) {
     use crate::pattern::TextPatternModifier;
 
     if let Some(delimiter_pos) = field.find('|') {
         let field_name = &field[..delimiter_pos];
         let modifier_str = &field[delimiter_pos + 1..];
 
-        let modifier = match modifier_str.to_lowercase().as_str() {
-            "contains" => Some(TextPatternModifier::Contains),
-            "prefix" | "startswith" => Some(TextPatternModifier::Prefix),
-            "suffix" | "endswith" => Some(TextPatternModifier::Suffix),
-            "all" => Some(TextPatternModifier::All),
-            "re" | "regex" => Some(TextPatternModifier::Regex),
-            "keyword" => Some(TextPatternModifier::Keyword),
-            _ => None, // Unknown modifier, treat as none
-        };
+        // Check for compound modifiers (e.g., "contains|all")
+        let parts: Vec<&str> = modifier_str.split('|').collect();
+        let mut modifier = None;
+        let mut all_flag = false;
 
-        (field_name, modifier)
+        for part in parts {
+            match part.to_lowercase().as_str() {
+                "contains" => modifier = Some(TextPatternModifier::Contains),
+                "prefix" | "startswith" => modifier = Some(TextPatternModifier::Prefix),
+                "suffix" | "endswith" => modifier = Some(TextPatternModifier::Suffix),
+                "all" => all_flag = true,
+                "re" | "regex" => modifier = Some(TextPatternModifier::Regex),
+                "keyword" => modifier = Some(TextPatternModifier::Keyword),
+                _ => {} // Unknown modifier part, ignore
+            }
+        }
+
+        (field_name, modifier, all_flag)
     } else {
-        (field, None)
+        (field, None, false)
     }
 }
 
@@ -446,7 +454,7 @@ fn create_rule_from_ident(
     use crate::pattern::{new_num_matcher, new_string_matcher, TextPatternModifier};
 
     // Parse field and modifier
-    let (field_name, modifier) = parse_field_modifier(field);
+    let (field_name, modifier, all_flag) = parse_field_modifier(field);
 
     // Handle different value types
     match value {
@@ -463,7 +471,7 @@ fn create_rule_from_ident(
             let matcher = new_string_matcher(
                 final_modifier,
                 false, // lowercase
-                false, // all
+                all_flag, // use parsed all flag
                 no_collapse_ws,
                 vec![processed.clone()],
             )
@@ -501,7 +509,7 @@ fn create_rule_from_ident(
                 let matcher = new_string_matcher(
                     TextPatternModifier::None,
                     false, // lowercase
-                    false, // all
+                    all_flag, // use parsed all flag
                     no_collapse_ws,
                     vec![n.to_string()],
                 )
@@ -527,7 +535,7 @@ fn create_rule_from_ident(
             let matcher = new_string_matcher(
                 TextPatternModifier::None,
                 false, // lowercase
-                false, // all
+                all_flag, // use parsed all flag
                 no_collapse_ws,
                 vec![str_val.clone()],
             )
@@ -544,10 +552,56 @@ fn create_rule_from_ident(
             )))
         }
         serde_json::Value::Array(arr) => {
-            // Handle array of values as OR
+            // Handle array of values
             let mut branches: Vec<Arc<dyn Branch>> = Vec::new();
             let mut errors: Vec<String> = Vec::new();
+            let mut string_patterns: Vec<String> = Vec::new();
+            let mut has_mixed_types = false;
 
+            // First, check if this is a uniform array of strings that can be optimized
+            for v in arr.iter() {
+                if let serde_json::Value::String(s) = v {
+                    string_patterns.push(process_string_value(s, no_collapse_ws));
+                } else if let serde_json::Value::Object(_) = v {
+                    // Handle nested objects in arrays
+                    has_mixed_types = true;
+                    break;
+                } else {
+                    has_mixed_types = true;
+                    break;
+                }
+            }
+
+            // If all values are strings and we have the all flag, create a single conjunction matcher
+            if !has_mixed_types && !string_patterns.is_empty() && all_flag {
+                let final_modifier = modifier.unwrap_or(TextPatternModifier::None);
+                match new_string_matcher(
+                    final_modifier,
+                    false, // lowercase
+                    true,  // all flag - require all patterns
+                    no_collapse_ws,
+                    string_patterns,
+                ) {
+                    Ok(matcher) => {
+                        return Ok(Arc::new(FieldRule::new(
+                            Arc::from(field_name),
+                            FieldPattern::String {
+                                matcher: Arc::from(matcher),
+                                pattern_desc: Arc::from(format!("all of {:?}", arr)),
+                            },
+                        )));
+                    }
+                    Err(e) => {
+                        return Err(ParseError::string_pattern_creation_failed(
+                            field_name,
+                            &format!("array with all flag"),
+                            e.to_string(),
+                        ));
+                    }
+                }
+            }
+
+            // Otherwise, handle each value individually
             for v in arr.iter() {
                 match v {
                     serde_json::Value::String(s) => {
@@ -563,7 +617,7 @@ fn create_rule_from_ident(
                         match new_string_matcher(
                             final_modifier,
                             false, // lowercase
-                            false, // all
+                            all_flag, // use parsed all flag
                             no_collapse_ws,
                             vec![processed.clone()],
                         ) {
@@ -609,7 +663,7 @@ fn create_rule_from_ident(
                             match new_string_matcher(
                                 TextPatternModifier::None,
                                 false, // lowercase
-                                false, // all
+                                all_flag, // use parsed all flag
                                 no_collapse_ws,
                                 vec![n.to_string()],
                             ) {
@@ -637,7 +691,7 @@ fn create_rule_from_ident(
                         match new_string_matcher(
                             TextPatternModifier::None,
                             false, // lowercase
-                            false, // all
+                            all_flag, // use parsed all flag
                             no_collapse_ws,
                             vec![str_val.clone()],
                         ) {
@@ -655,6 +709,40 @@ fn create_rule_from_ident(
                                 errors.push(format!(
                                     "Failed to create string matcher for boolean '{}': {}",
                                     str_val, e
+                                ));
+                            }
+                        }
+                    }
+                    serde_json::Value::Object(obj) => {
+                        // Handle nested objects in arrays
+                        match create_complex_field_rule(&format!("{}[{}]", field_name, branches.len()), obj, no_collapse_ws) {
+                            Ok(branch) => branches.push(branch),
+                            Err(e) => errors.push(format!("Failed to create rule for nested object: {}", e)),
+                        }
+                    }
+                    serde_json::Value::Null => {
+                        // Handle null values as empty string matches
+                        match new_string_matcher(
+                            TextPatternModifier::None,
+                            false, // lowercase
+                            all_flag, // use parsed all flag
+                            no_collapse_ws,
+                            vec!["".to_string()],
+                        ) {
+                            Ok(matcher) => {
+                                branches.push(Arc::new(FieldRule::new(
+                                    Arc::from(field_name),
+                                    FieldPattern::String {
+                                        matcher: Arc::from(matcher),
+                                        pattern_desc: Arc::from("null"),
+                                    },
+                                ))
+                                    as Arc<dyn Branch>);
+                            }
+                            Err(e) => {
+                                errors.push(format!(
+                                    "Failed to create string matcher for null: {}",
+                                    e
                                 ));
                             }
                         }
@@ -716,11 +804,13 @@ fn create_complex_field_rule(
 ) -> Result<Arc<dyn Branch>, ParseError> {
     // For object definitions, we create field rules directly from the object's properties
     // This handles cases like: "selection": { "EventID": 4688, "Process": "cmd.exe" }
+    // AND cases where field names contain modifiers: { "CommandLine|contains|all": [...] }
     let mut branches: Vec<Arc<dyn Branch>> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
 
     for (key, value) in obj.iter() {
-        // Use the key directly as the field name, not prepended with parent field
+        // The key might contain modifiers like "CommandLine|contains|all"
+        // In this case, we need to handle it specially
         match create_rule_from_ident(key, value, no_collapse_ws) {
             Ok(branch) => branches.push(branch),
             Err(e) => errors.push(format!("Error creating rule for '{}': {}", key, e)),

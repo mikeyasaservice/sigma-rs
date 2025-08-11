@@ -662,7 +662,7 @@ impl ServiceRunner {
                 }
             }
             res = async {
-                let mut handles = std::mem::take(&mut self.handles);
+                let handles = std::mem::take(&mut self.handles);
                 for handle in handles {
                     if let Err(e) = handle.await? {
                         return Err(e);

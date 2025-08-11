@@ -261,4 +261,6 @@ move_to_root.sh
 # Keep important configuration files
 !.github/
 !.gitlab-ci.yml
-!.travis.yml
+!.travis.yml# Ignore all rule content except the directory itself
+rules/*
+!rules/.gitkeep

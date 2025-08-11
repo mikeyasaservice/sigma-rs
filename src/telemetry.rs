@@ -5,14 +5,14 @@
 
 use anyhow::Result;
 #[cfg(feature = "telemetry")]
-use opentelemetry::{
-    global, runtime::TokioCurrentThread, sdk::propagation::TraceContextPropagator,
-};
+use opentelemetry::global;
+#[cfg(feature = "telemetry")]
+use opentelemetry_sdk::propagation::TraceContextPropagator;
 #[cfg(feature = "telemetry")]
 use opentelemetry_otlp::WithExportConfig;
 #[cfg(feature = "telemetry")]
 use opentelemetry_sdk::{
-    trace::{self, RandomIdGenerator, Sampler, Tracer},
+    trace::{RandomIdGenerator, Sampler},
     Resource,
 };
 #[cfg(feature = "telemetry")]
@@ -89,12 +89,12 @@ pub fn init_telemetry(config: TelemetryConfig) -> Result<()> {
         .tracing()
         .with_exporter(exporter)
         .with_trace_config(
-            trace::config()
+            opentelemetry_sdk::trace::Config::default()
                 .with_sampler(Sampler::TraceIdRatioBased(config.sampling_rate))
                 .with_id_generator(RandomIdGenerator::default())
                 .with_resource(resource),
         )
-        .install_batch(TokioCurrentThread)?;
+        .install_batch(opentelemetry_sdk::runtime::Tokio)?;
 
     // Create telemetry layer
     let telemetry_layer = OpenTelemetryLayer::new(tracer);
