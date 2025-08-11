@@ -460,17 +460,11 @@ fn create_rule_from_ident(
     match value {
         serde_json::Value::String(s) => {
             let processed = process_string_value(s, no_collapse_ws);
-            let final_modifier = modifier.unwrap_or_else(|| {
-                if processed.contains('*') || processed.contains('?') {
-                    TextPatternModifier::None // Will be handled as glob
-                } else {
-                    TextPatternModifier::None // Exact match
-                }
-            });
+            let final_modifier = modifier.unwrap_or(TextPatternModifier::None);
 
             let matcher = new_string_matcher(
                 final_modifier,
-                false, // lowercase
+                false,    // lowercase
                 all_flag, // use parsed all flag
                 no_collapse_ws,
                 vec![processed.clone()],
@@ -508,7 +502,7 @@ fn create_rule_from_ident(
                 // Fall back to string matching for floats
                 let matcher = new_string_matcher(
                     TextPatternModifier::None,
-                    false, // lowercase
+                    false,    // lowercase
                     all_flag, // use parsed all flag
                     no_collapse_ws,
                     vec![n.to_string()],
@@ -534,7 +528,7 @@ fn create_rule_from_ident(
             let str_val = b.to_string();
             let matcher = new_string_matcher(
                 TextPatternModifier::None,
-                false, // lowercase
+                false,    // lowercase
                 all_flag, // use parsed all flag
                 no_collapse_ws,
                 vec![str_val.clone()],
@@ -606,17 +600,11 @@ fn create_rule_from_ident(
                 match v {
                     serde_json::Value::String(s) => {
                         let processed = process_string_value(s, no_collapse_ws);
-                        let final_modifier = modifier.unwrap_or_else(|| {
-                            if processed.contains('*') || processed.contains('?') {
-                                TextPatternModifier::None // Will be handled as glob
-                            } else {
-                                TextPatternModifier::None // Exact match
-                            }
-                        });
+                        let final_modifier = modifier.unwrap_or(TextPatternModifier::None);
 
                         match new_string_matcher(
                             final_modifier,
-                            false, // lowercase
+                            false,    // lowercase
                             all_flag, // use parsed all flag
                             no_collapse_ws,
                             vec![processed.clone()],
@@ -662,7 +650,7 @@ fn create_rule_from_ident(
                         } else {
                             match new_string_matcher(
                                 TextPatternModifier::None,
-                                false, // lowercase
+                                false,    // lowercase
                                 all_flag, // use parsed all flag
                                 no_collapse_ws,
                                 vec![n.to_string()],
@@ -690,7 +678,7 @@ fn create_rule_from_ident(
                         let str_val = b.to_string();
                         match new_string_matcher(
                             TextPatternModifier::None,
-                            false, // lowercase
+                            false,    // lowercase
                             all_flag, // use parsed all flag
                             no_collapse_ws,
                             vec![str_val.clone()],
@@ -715,16 +703,21 @@ fn create_rule_from_ident(
                     }
                     serde_json::Value::Object(obj) => {
                         // Handle nested objects in arrays
-                        match create_complex_field_rule(&format!("{}[{}]", field_name, branches.len()), obj, no_collapse_ws) {
+                        match create_complex_field_rule(
+                            &format!("{}[{}]", field_name, branches.len()),
+                            obj,
+                            no_collapse_ws,
+                        ) {
                             Ok(branch) => branches.push(branch),
-                            Err(e) => errors.push(format!("Failed to create rule for nested object: {}", e)),
+                            Err(e) => errors
+                                .push(format!("Failed to create rule for nested object: {}", e)),
                         }
                     }
                     serde_json::Value::Null => {
                         // Handle null values as empty string matches
                         match new_string_matcher(
                             TextPatternModifier::None,
-                            false, // lowercase
+                            false,    // lowercase
                             all_flag, // use parsed all flag
                             no_collapse_ws,
                             vec!["".to_string()],

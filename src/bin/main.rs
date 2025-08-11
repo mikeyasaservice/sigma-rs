@@ -1,11 +1,11 @@
 use clap::{Parser, ValueEnum};
-use sigma_rs::{RuleSet, DynamicEvent};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sigma_rs::{DynamicEvent, RuleSet};
+use std::fs;
+use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use tracing_subscriber;
-use serde_json::Value;
-use std::io::{self, BufRead, Write};
-use serde::{Deserialize, Serialize};
-use std::fs;
 
 #[derive(Debug, Clone, ValueEnum)]
 enum InputSource {
@@ -28,19 +28,19 @@ struct Cli {
     /// Path to rules directory
     #[arg(short, long)]
     rules: PathBuf,
-    
+
     /// Input source
     #[arg(short, long, default_value = "stdin")]
     input: InputSource,
-    
+
     /// Output target
     #[arg(short, long, default_value = "stdout")]
     output: OutputTarget,
-    
+
     /// Configuration file (required for Kafka)
     #[arg(short, long)]
     config: Option<PathBuf>,
-    
+
     /// Enable debug logging
     #[arg(short, long)]
     debug: bool,
@@ -77,7 +77,7 @@ impl Default for KafkaConfig {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    
+
     // Setup logging
     if cli.debug {
         tracing_subscriber::fmt::init();
@@ -86,7 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_max_level(tracing::Level::WARN)
             .init();
     }
-    
+
     // Load configuration if needed
     #[allow(unused_variables)]
     let config = if needs_config(&cli) {
@@ -104,31 +104,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         Config::default()
     };
-    
+
     // Validate rules directory exists
     if !cli.rules.exists() {
         eprintln!("Error: Rules directory not found: {}", cli.rules.display());
         eprintln!("Please specify a valid rules directory with --rules");
         std::process::exit(1);
     }
-    
+
     if !cli.rules.is_dir() {
-        eprintln!("Error: Rules path is not a directory: {}", cli.rules.display());
+        eprintln!(
+            "Error: Rules path is not a directory: {}",
+            cli.rules.display()
+        );
         std::process::exit(1);
     }
-    
+
     // Load rules
     let mut ruleset = RuleSet::new();
     ruleset.load_directory(&cli.rules.to_string_lossy()).await?;
-    
+
     if ruleset.len() == 0 {
-        eprintln!("Error: No rules found in directory: {}", cli.rules.display());
+        eprintln!(
+            "Error: No rules found in directory: {}",
+            cli.rules.display()
+        );
         eprintln!("Please ensure the directory contains valid .yml rule files");
         std::process::exit(1);
     }
-    
-    eprintln!("Loaded {} rules from {}", ruleset.len(), cli.rules.display());
-    
+
+    eprintln!(
+        "Loaded {} rules from {}",
+        ruleset.len(),
+        cli.rules.display()
+    );
+
     // Process events based on input/output configuration
     match (cli.input, cli.output) {
         (InputSource::Stdin, OutputTarget::Stdout) => {
@@ -152,7 +162,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         }
     }
-    
+
     Ok(())
 }
 
@@ -172,18 +182,18 @@ async fn process_stdin_to_stdout(ruleset: RuleSet) -> Result<(), Box<dyn std::er
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut stdout_lock = stdout.lock();
-    
+
     for line in stdin.lock().lines() {
         let line = line?;
         if line.trim().is_empty() {
             continue;
         }
-        
+
         let event: Value = serde_json::from_str(&line)?;
         let dynamic_event = DynamicEvent::new(event.clone());
-        
+
         let result = ruleset.evaluate(&dynamic_event).await?;
-        
+
         for rule_match in &result.matches {
             if rule_match.matched {
                 let output = serde_json::json!({
@@ -196,7 +206,7 @@ async fn process_stdin_to_stdout(ruleset: RuleSet) -> Result<(), Box<dyn std::er
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -205,25 +215,25 @@ async fn process_kafka_to_stdout(
     ruleset: RuleSet,
     config: KafkaConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use rdkafka::consumer::{Consumer, StreamConsumer};
-    use rdkafka::config::ClientConfig;
-    use rdkafka::message::Message;
     use futures::stream::StreamExt;
-    
+    use rdkafka::config::ClientConfig;
+    use rdkafka::consumer::{Consumer, StreamConsumer};
+    use rdkafka::message::Message;
+
     let consumer: StreamConsumer = ClientConfig::new()
         .set("bootstrap.servers", &config.brokers)
         .set("group.id", &config.group_id)
         .set("auto.offset.reset", &config.auto_offset_reset)
         .set("enable.auto.commit", "false")
         .create()?;
-    
+
     consumer.subscribe(&[&config.input_topic])?;
-    
+
     let stdout = io::stdout();
     let mut stdout_lock = stdout.lock();
-    
+
     let mut message_stream = consumer.stream();
-    
+
     while let Some(message) = message_stream.next().await {
         match message {
             Ok(msg) => {
@@ -232,7 +242,7 @@ async fn process_kafka_to_stdout(
                         if let Ok(event) = serde_json::from_str::<Value>(data) {
                             let dynamic_event = DynamicEvent::new(event.clone());
                             let result = ruleset.evaluate(&dynamic_event).await?;
-                            
+
                             for rule_match in &result.matches {
                                 if rule_match.matched {
                                     let output = serde_json::json!({
@@ -254,7 +264,7 @@ async fn process_kafka_to_stdout(
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -263,27 +273,27 @@ async fn process_stdin_to_kafka(
     ruleset: RuleSet,
     config: KafkaConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use rdkafka::producer::{FutureProducer, FutureRecord};
     use rdkafka::config::ClientConfig;
-    
+    use rdkafka::producer::{FutureProducer, FutureRecord};
+
     let producer: FutureProducer = ClientConfig::new()
         .set("bootstrap.servers", &config.brokers)
         .set("message.timeout.ms", "5000")
         .create()?;
-    
+
     let stdin = io::stdin();
-    
+
     for line in stdin.lock().lines() {
         let line = line?;
         if line.trim().is_empty() {
             continue;
         }
-        
+
         let event: Value = serde_json::from_str(&line)?;
         let dynamic_event = DynamicEvent::new(event.clone());
-        
+
         let result = ruleset.evaluate(&dynamic_event).await?;
-        
+
         for rule_match in &result.matches {
             if rule_match.matched {
                 let output = serde_json::json!({
@@ -292,18 +302,20 @@ async fn process_stdin_to_kafka(
                     "rule_id": rule_match.rule_id,
                     "rule_title": rule_match.rule_title,
                 });
-                
+
                 let payload = serde_json::to_string(&output)?;
                 let record = FutureRecord::to(&config.output_topic)
                     .payload(&payload)
                     .key(&rule_match.rule_id);
-                
-                producer.send(record, std::time::Duration::from_secs(0)).await
+
+                producer
+                    .send(record, std::time::Duration::from_secs(0))
+                    .await
                     .map_err(|(e, _)| e)?;
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -312,28 +324,28 @@ async fn process_kafka_to_kafka(
     ruleset: RuleSet,
     config: KafkaConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use rdkafka::consumer::{Consumer, StreamConsumer};
-    use rdkafka::producer::{FutureProducer, FutureRecord};
-    use rdkafka::config::ClientConfig;
-    use rdkafka::message::Message;
     use futures::stream::StreamExt;
-    
+    use rdkafka::config::ClientConfig;
+    use rdkafka::consumer::{Consumer, StreamConsumer};
+    use rdkafka::message::Message;
+    use rdkafka::producer::{FutureProducer, FutureRecord};
+
     let consumer: StreamConsumer = ClientConfig::new()
         .set("bootstrap.servers", &config.brokers)
         .set("group.id", &config.group_id)
         .set("auto.offset.reset", &config.auto_offset_reset)
         .set("enable.auto.commit", "false")
         .create()?;
-    
+
     let producer: FutureProducer = ClientConfig::new()
         .set("bootstrap.servers", &config.brokers)
         .set("message.timeout.ms", "5000")
         .create()?;
-    
+
     consumer.subscribe(&[&config.input_topic])?;
-    
+
     let mut message_stream = consumer.stream();
-    
+
     while let Some(message) = message_stream.next().await {
         match message {
             Ok(msg) => {
@@ -342,7 +354,7 @@ async fn process_kafka_to_kafka(
                         if let Ok(event) = serde_json::from_str::<Value>(data) {
                             let dynamic_event = DynamicEvent::new(event.clone());
                             let result = ruleset.evaluate(&dynamic_event).await?;
-                            
+
                             for rule_match in &result.matches {
                                 if rule_match.matched {
                                     let output = serde_json::json!({
@@ -351,13 +363,15 @@ async fn process_kafka_to_kafka(
                                         "rule_id": rule_match.rule_id,
                                         "rule_title": rule_match.rule_title,
                                     });
-                                    
+
                                     let payload = serde_json::to_string(&output)?;
                                     let record = FutureRecord::to(&config.output_topic)
                                         .payload(&payload)
                                         .key(&rule_match.rule_id);
-                                    
-                                    producer.send(record, std::time::Duration::from_secs(0)).await
+
+                                    producer
+                                        .send(record, std::time::Duration::from_secs(0))
+                                        .await
                                         .map_err(|(e, _)| e)?;
                                 }
                             }
@@ -371,6 +385,6 @@ async fn process_kafka_to_kafka(
             }
         }
     }
-    
+
     Ok(())
 }

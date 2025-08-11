@@ -7,9 +7,9 @@ use anyhow::Result;
 #[cfg(feature = "telemetry")]
 use opentelemetry::global;
 #[cfg(feature = "telemetry")]
-use opentelemetry_sdk::propagation::TraceContextPropagator;
-#[cfg(feature = "telemetry")]
 use opentelemetry_otlp::WithExportConfig;
+#[cfg(feature = "telemetry")]
+use opentelemetry_sdk::propagation::TraceContextPropagator;
 #[cfg(feature = "telemetry")]
 use opentelemetry_sdk::{
     trace::{RandomIdGenerator, Sampler},

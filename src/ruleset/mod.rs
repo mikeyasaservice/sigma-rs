@@ -141,9 +141,9 @@ impl RuleSet {
         let mut total_file_count = 0;
 
         while let Some(current_dir) = dirs_to_process.pop() {
-            let mut entries = tokio::fs::read_dir(&current_dir)
-                .await
-                .map_err(|e| SigmaError::Parse(format!("Failed to read directory {:?}: {}", current_dir, e)))?;
+            let mut entries = tokio::fs::read_dir(&current_dir).await.map_err(|e| {
+                SigmaError::Parse(format!("Failed to read directory {:?}: {}", current_dir, e))
+            })?;
 
             while let Some(entry) = entries
                 .next_entry()
@@ -160,13 +160,17 @@ impl RuleSet {
                 }
 
                 let path = entry.path();
-                let file_type = entry.file_type().await
+                let file_type = entry
+                    .file_type()
+                    .await
                     .map_err(|e| SigmaError::Parse(format!("Failed to get file type: {}", e)))?;
 
                 if file_type.is_dir() {
                     // Add subdirectory to process list
                     dirs_to_process.push(path);
-                } else if file_type.is_file() && path.extension().and_then(|s| s.to_str()) == Some("yml") {
+                } else if file_type.is_file()
+                    && path.extension().and_then(|s| s.to_str()) == Some("yml")
+                {
                     total_file_count += 1;
                     match self.load_rule_file(&path).await {
                         Ok(_) => {}
