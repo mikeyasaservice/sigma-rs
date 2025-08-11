@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use crate::ast::{Branch, FieldPattern, FieldRule, NodeSimpleAnd, NodeSimpleOr};
 use crate::lexer::token::{Item, Token};
 use crate::lexer::Lexer;
