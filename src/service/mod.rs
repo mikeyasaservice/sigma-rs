@@ -38,7 +38,6 @@ static API_KEY: Lazy<Option<String>> = Lazy::new(|| std::env::var("SIGMA_API_KEY
 pub struct SigmaService {
     engine: Arc<SigmaEngine>,
     start_time: std::time::Instant,
-    #[cfg(feature = "metrics")]
     metrics_registry: Option<Arc<prometheus::Registry>>,
 }
 
@@ -123,12 +122,10 @@ impl SigmaService {
         Self {
             engine,
             start_time: std::time::Instant::now(),
-            #[cfg(feature = "metrics")]
             metrics_registry: None,
         }
     }
 
-    #[cfg(feature = "metrics")]
     pub fn with_metrics_registry(mut self, registry: Arc<prometheus::Registry>) -> Self {
         self.metrics_registry = Some(registry);
         self
@@ -317,7 +314,6 @@ impl HttpServer {
 }
 
 // gRPC server implementation with Tonic
-#[cfg(feature = "service")]
 pub mod grpc {
     use crate::{SigmaEngine, SigmaError};
     use std::net::SocketAddr;
@@ -604,16 +600,12 @@ pub mod grpc {
     }
 }
 
-#[cfg(feature = "service")]
 pub use grpc::{GrpcServer, SigmaGrpcService};
 
 // Service runner that can manage multiple servers
 pub struct ServiceRunner {
     http_server: Option<HttpServer>,
-    #[cfg(feature = "service")]
     grpc_server: Option<grpc::GrpcServer>,
-    #[cfg(not(feature = "service"))]
-    grpc_server: Option<()>,
     handles: Vec<JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync + 'static>>>>,
 }
 
@@ -631,7 +623,6 @@ impl ServiceRunner {
         self
     }
 
-    #[cfg(feature = "service")]
     pub fn with_grpc(mut self, engine: Arc<SigmaEngine>, addr: SocketAddr) -> Self {
         self.grpc_server = Some(grpc::GrpcServer::new(engine, addr));
         self
@@ -643,7 +634,6 @@ impl ServiceRunner {
             self.handles.push(handle);
         }
 
-        #[cfg(feature = "service")]
         if let Some(grpc) = self.grpc_server.take() {
             let handle = tokio::spawn(async move { grpc.run().await });
             self.handles.push(handle);
@@ -683,13 +673,11 @@ impl ServiceRunner {
 }
 
 // Metrics endpoint for Prometheus
-#[cfg(feature = "metrics")]
 #[derive(Clone)]
 pub struct MetricsService {
     registry: Arc<prometheus::Registry>,
 }
 
-#[cfg(feature = "metrics")]
 impl MetricsService {
     pub fn new(registry: Arc<prometheus::Registry>) -> Self {
         Self { registry }
@@ -1125,7 +1113,6 @@ detection:
         assert_eq!(SERVICE_METRICS.requests_failed.load(Ordering::Relaxed), 1);
     }
 
-    #[cfg(feature = "service")]
     #[tokio::test]
     async fn test_grpc_health_endpoint() {
         use grpc::sigma::{sigma_service_server::SigmaService as GrpcSigmaService, HealthRequest};
@@ -1143,7 +1130,6 @@ detection:
         assert!(health.uptime_seconds >= 0);
     }
 
-    #[cfg(feature = "service")]
     #[tokio::test]
     async fn test_grpc_evaluate_endpoint() {
         use grpc::sigma::{

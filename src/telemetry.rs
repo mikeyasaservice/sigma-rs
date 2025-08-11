@@ -4,24 +4,17 @@
 //! distributed tracing across your security event processing pipeline.
 
 use anyhow::Result;
-#[cfg(feature = "telemetry")]
 use opentelemetry::global;
-#[cfg(feature = "telemetry")]
 use opentelemetry_otlp::WithExportConfig;
-#[cfg(feature = "telemetry")]
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-#[cfg(feature = "telemetry")]
 use opentelemetry_sdk::{
     trace::{RandomIdGenerator, Sampler},
     Resource,
 };
-#[cfg(feature = "telemetry")]
 use opentelemetry_semantic_conventions::resource::{
     DEPLOYMENT_ENVIRONMENT, SERVICE_NAME, SERVICE_VERSION,
 };
-#[cfg(feature = "telemetry")]
 use tracing_opentelemetry::OpenTelemetryLayer;
-#[cfg(feature = "telemetry")]
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 
 /// OpenTelemetry configuration
@@ -58,7 +51,6 @@ impl Default for TelemetryConfig {
 }
 
 /// Initialize OpenTelemetry with the provided configuration
-#[cfg(feature = "telemetry")]
 pub fn init_telemetry(config: TelemetryConfig) -> Result<()> {
     // Set up propagator
     if config.propagation {
@@ -111,7 +103,6 @@ pub fn init_telemetry(config: TelemetryConfig) -> Result<()> {
 }
 
 /// Initialize telemetry from environment variables
-#[cfg(feature = "telemetry")]
 pub fn init_telemetry_from_env() -> Result<()> {
     let config = TelemetryConfig {
         endpoint: std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -136,24 +127,10 @@ pub fn init_telemetry_from_env() -> Result<()> {
 }
 
 /// Shutdown OpenTelemetry gracefully
-#[cfg(feature = "telemetry")]
 pub fn shutdown_telemetry() {
     global::shutdown_tracer_provider();
 }
 
-/// No-op implementations when telemetry feature is disabled
-#[cfg(not(feature = "telemetry"))]
-pub fn init_telemetry(_config: TelemetryConfig) -> Result<()> {
-    Ok(())
-}
-
-#[cfg(not(feature = "telemetry"))]
-pub fn init_telemetry_from_env() -> Result<()> {
-    Ok(())
-}
-
-#[cfg(not(feature = "telemetry"))]
-pub fn shutdown_telemetry() {}
 
 /// Helper macro to create spans with common attributes
 #[macro_export]

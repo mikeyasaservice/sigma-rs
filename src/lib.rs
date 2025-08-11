@@ -107,50 +107,16 @@ pub mod engine;
 pub use engine::SigmaEngine;
 
 /// Service layer with Tokio integration
-#[cfg(feature = "service")]
 pub mod service;
 
-#[cfg(not(feature = "service"))]
-pub mod service {
-    //! Stub module when service feature is disabled
-}
-
 /// Consumer implementation for Redpanda/Kafka
-#[cfg(feature = "kafka")]
 pub mod consumer;
-
-#[cfg(not(feature = "kafka"))]
-pub mod consumer {
-    //! Stub module when kafka feature is disabled
-}
 
 /// Aggregation support for Sigma rules  
 pub mod aggregation;
 
 /// OpenTelemetry integration for distributed tracing
-#[cfg(feature = "telemetry")]
 pub mod telemetry;
-
-#[cfg(not(feature = "telemetry"))]
-pub mod telemetry {
-    //! Stub module when telemetry feature is disabled
-    use anyhow::Result;
-
-    /// Telemetry configuration struct (stub when feature disabled)
-    #[derive(Debug, Clone, Default)]
-    pub struct TelemetryConfig;
-
-    /// Initialize telemetry (no-op when feature disabled)
-    pub fn init_telemetry(_: TelemetryConfig) -> Result<()> {
-        Ok(())
-    }
-    /// Initialize telemetry from environment (no-op when feature disabled)
-    pub fn init_telemetry_from_env() -> Result<()> {
-        Ok(())
-    }
-    /// Shutdown telemetry (no-op when feature disabled)
-    pub fn shutdown_telemetry() {}
-}
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -10,14 +10,12 @@ use tracing_subscriber;
 #[derive(Debug, Clone, ValueEnum)]
 enum InputSource {
     Stdin,
-    #[cfg(feature = "kafka")]
     Kafka,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
 enum OutputTarget {
     Stdout,
-    #[cfg(feature = "kafka")]
     Kafka,
 }
 
@@ -144,19 +142,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (InputSource::Stdin, OutputTarget::Stdout) => {
             process_stdin_to_stdout(ruleset).await?;
         }
-        #[cfg(feature = "kafka")]
         (InputSource::Kafka, OutputTarget::Stdout) => {
             process_kafka_to_stdout(ruleset, config.kafka).await?;
         }
-        #[cfg(feature = "kafka")]
         (InputSource::Stdin, OutputTarget::Kafka) => {
             process_stdin_to_kafka(ruleset, config.kafka).await?;
         }
-        #[cfg(feature = "kafka")]
         (InputSource::Kafka, OutputTarget::Kafka) => {
             process_kafka_to_kafka(ruleset, config.kafka).await?;
         }
-        #[cfg(feature = "kafka")]
         _ => {
             eprintln!("Invalid input/output combination");
             std::process::exit(1);
@@ -167,15 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn needs_config(cli: &Cli) -> bool {
-    #[cfg(feature = "kafka")]
-    {
-        matches!(cli.input, InputSource::Kafka) || matches!(cli.output, OutputTarget::Kafka)
-    }
-    #[cfg(not(feature = "kafka"))]
-    {
-        let _ = cli; // Suppress unused warning
-        false
-    }
+    matches!(cli.input, InputSource::Kafka) || matches!(cli.output, OutputTarget::Kafka)
 }
 
 async fn process_stdin_to_stdout(ruleset: RuleSet) -> Result<(), Box<dyn std::error::Error>> {
@@ -210,7 +196,6 @@ async fn process_stdin_to_stdout(ruleset: RuleSet) -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-#[cfg(feature = "kafka")]
 async fn process_kafka_to_stdout(
     ruleset: RuleSet,
     config: KafkaConfig,
@@ -268,7 +253,6 @@ async fn process_kafka_to_stdout(
     Ok(())
 }
 
-#[cfg(feature = "kafka")]
 async fn process_stdin_to_kafka(
     ruleset: RuleSet,
     config: KafkaConfig,
@@ -319,7 +303,6 @@ async fn process_stdin_to_kafka(
     Ok(())
 }
 
-#[cfg(feature = "kafka")]
 async fn process_kafka_to_kafka(
     ruleset: RuleSet,
     config: KafkaConfig,

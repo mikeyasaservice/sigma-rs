@@ -51,16 +51,16 @@ jobs:
             ${{ runner.os }}-cargo-
       
       - name: Build
-        run: cargo build --no-default-features --verbose
+        run: cargo build --verbose
       
       - name: Run tests
-        run: cargo test --no-default-features --verbose
+        run: cargo test --verbose
       
-      - name: Run tests (without default features)
-        run: cargo test --no-default-features --verbose
+      - name: Run tests (all features)
+        run: cargo test --all-features --verbose
       
       - name: Run doctests
-        run: cargo test --doc --no-default-features --verbose
+        run: cargo test --doc --verbose
       
       - name: Test with metrics feature
         run: cargo test --features metrics --verbose
@@ -110,7 +110,7 @@ jobs:
             ${{ runner.os }}-cargo-
       
       - name: Run clippy
-        run: cargo clippy --all-targets --no-default-features -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
   
   coverage:
     name: Code Coverage
@@ -141,7 +141,7 @@ jobs:
             ${{ runner.os }}-cargo-
       
       - name: Generate code coverage
-        run: cargo tarpaulin --no-default-features --workspace --out xml
+        run: cargo tarpaulin --workspace --out xml
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -177,7 +177,7 @@ jobs:
             ${{ runner.os }}-cargo-
       
       - name: Run benchmarks
-        run: cargo bench --no-default-features --verbose
+        run: cargo bench --verbose
       
       - name: Store benchmark results
         uses: benchmark-action/github-action-benchmark@v1
@@ -201,7 +201,7 @@ jobs:
           override: true
       
       - name: Build documentation
-        run: cargo doc --no-default-features --no-deps
+        run: cargo doc --no-deps
       
       - name: Test documentation
-        run: cargo test --doc --no-default-features
+        run: cargo test --doc

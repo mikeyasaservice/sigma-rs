@@ -2,7 +2,7 @@
 
 use serde_json::json;
 use sigma_rs::{rule, DynamicEvent, RuleSet};
-use std::sync::Arc;
+use std::path::PathBuf;
 
 #[tokio::test]
 async fn test_escape_handling_parity() {
@@ -16,8 +16,8 @@ detection:
 "#;
 
     let rule = rule::rule_from_yaml(yaml.as_bytes()).unwrap();
-    let rule = Arc::new(rule);
-    let tree = sigma_rs::tree::build_tree(rule).await.unwrap();
+    let rule_handle = sigma_rs::rule::RuleHandle::new(rule, PathBuf::from("test.yml"));
+    let tree = sigma_rs::tree::build_tree(rule_handle).await.unwrap();
 
     // This should match due to escape handling
     let event = DynamicEvent::new(json!({
@@ -48,8 +48,8 @@ detection:
 "#;
 
     let rule = rule::rule_from_yaml(yaml.as_bytes()).unwrap();
-    let rule = Arc::new(rule);
-    let tree = sigma_rs::tree::build_tree(rule).await.unwrap();
+    let rule_handle = sigma_rs::rule::RuleHandle::new(rule, PathBuf::from("test.yml"));
+    let tree = sigma_rs::tree::build_tree(rule_handle).await.unwrap();
 
     // This should match due to whitespace collapsing
     let event = DynamicEvent::new(json!({
@@ -80,8 +80,8 @@ detection:
 "#;
 
     let rule = rule::rule_from_yaml(yaml.as_bytes()).unwrap();
-    let rule = Arc::new(rule);
-    let tree = sigma_rs::tree::build_tree(rule).await.unwrap();
+    let rule_handle = sigma_rs::rule::RuleHandle::new(rule, PathBuf::from("test.yml"));
+    let tree = sigma_rs::tree::build_tree(rule_handle).await.unwrap();
 
     // Test numeric value as string
     let event = DynamicEvent::new(json!({
@@ -112,8 +112,8 @@ detection:
 "#;
 
     let rule = rule::rule_from_yaml(yaml.as_bytes()).unwrap();
-    let rule = Arc::new(rule);
-    let tree = sigma_rs::tree::build_tree(rule).await.unwrap();
+    let rule_handle = sigma_rs::rule::RuleHandle::new(rule, PathBuf::from("test.yml"));
+    let tree = sigma_rs::tree::build_tree(rule_handle).await.unwrap();
 
     let event = DynamicEvent::new(json!({
         "CommandLine": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
