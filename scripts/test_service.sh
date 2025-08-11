@@ -12,7 +12,7 @@ NC='\033[0m'
 
 # Test configuration
 SERVICE_BINARY="./target/release/sigma-rs-service"
-SERVICE_PORT=8080
+SERVICE_PORT=8088
 GRPC_PORT=9090
 API_KEY="test-api-key"
 

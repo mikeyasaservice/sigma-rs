@@ -140,6 +140,11 @@ harness = false
 name = "sigma-rs"
 path = "src/bin/main.rs"
 
+[[bin]]
+name = "sigma-rs-service"
+path = "src/bin/sigma-rs-service.rs"
+required-features = ["service"]
+
 [profile.release]
 opt-level = 3
 lto = true
