@@ -103,7 +103,7 @@ impl Coercible for Value {
 }
 
 /// Coerce a value for string pattern matching with copy-on-write semantics
-pub fn coerce_for_string_match(value: &Value) -> Cow<str> {
+pub fn coerce_for_string_match(value: &Value) -> Cow<'_, str> {
     match value {
         Value::String(s) => Cow::Borrowed(s),
         Value::Number(n) => {

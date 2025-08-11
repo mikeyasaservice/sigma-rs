@@ -312,7 +312,7 @@ impl Results {
     ///     println!("Rule ID: {}", result.id);
     /// }
     /// ```
-    pub fn iter(&self) -> std::slice::Iter<Result> {
+    pub fn iter(&self) -> std::slice::Iter<'_, Result> {
         self.0.iter()
     }
 }
