@@ -131,7 +131,6 @@ pub fn shutdown_telemetry() {
     global::shutdown_tracer_provider();
 }
 
-
 /// Helper macro to create spans with common attributes
 #[macro_export]
 macro_rules! span {
