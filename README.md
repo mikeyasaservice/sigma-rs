@@ -114,7 +114,7 @@ Sigma-rs delivers significant performance improvements over existing implementat
 
 ### Benchmark Results
 
-We conducted comprehensive benchmarks comparing sigma-rs against the original Go implementation from the academic study ["Towards implementing a streaming Sigma rule engine"](https://github.com/markus-kont/sigma-go) by Markus Kont and Mauno Pihelgas.
+We conducted comprehensive benchmarks comparing sigma-rs against the original Go implementation from the academic study ["Towards implementing a streaming Sigma rule engine"](https://ccdcoe.org/uploads/2020/10/Markus-Kont-Mauno-Pihelgas-IDS-for-logs-Towards-implementing-a-streaming-Sigma-rule-engine.pdf) by Markus Kont and Mauno Pihelgas.
 
 #### Test Environment
 - **Hardware**: Apple M4 Pro (2024)
