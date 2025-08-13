@@ -63,7 +63,7 @@ let tree = sigma_rs::tree::Tree::from_rule(&rule).await?;
 
 // Check if the event matches
 let matches = tree.matches(&event).await?;
-tracing::error!("Event matches: {}", matches.matched);
+tracing::info!("Event matches: {}", matches.matched);
 ```
 
 ## Redpanda Integration
